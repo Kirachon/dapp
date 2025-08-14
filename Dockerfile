@@ -14,6 +14,8 @@ COPY package*.json ./
 ENV HUSKY=0
 RUN npm ci --ignore-scripts && npm cache clean --force
 COPY tsconfig.json ./
+COPY prisma ./prisma
+RUN npx prisma generate
 COPY src ./src
 RUN npm run build
 
@@ -22,7 +24,9 @@ FROM node:20-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /app/dist ./dist
-COPY --from=base /app/node_modules ./node_modules
+COPY scripts ./scripts
+
+COPY --from=build /app/node_modules ./node_modules
 COPY package.json ./
 EXPOSE 8080
 CMD ["node", "dist/index.js"]
