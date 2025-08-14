@@ -1,0 +1,61 @@
+{
+  "name": "dapp",
+  "version": "1.0.0",
+  "description": "Open source dating app — modular monolith groundwork per SSOT plan",
+  "main": "dist/index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "start": "node dist/index.js",
+    "lint": "eslint . --ext .ts,.tsx",
+    "format": "prettier --write .",
+    "type-check": "tsc -p tsconfig.json --noEmit",
+    "prepare": "husky",
+    "test": "echo \"No tests yet — add Jest/Vitest per SSOT plan\" && exit 0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  },
+  "keywords": [
+    "dating",
+    "graphql",
+    "fastify",
+    "typescript"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@types/node": "^24.2.1",
+    "@typescript-eslint/eslint-plugin": "^8.39.1",
+    "@typescript-eslint/parser": "^8.39.1",
+    "eslint": "^9.33.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-prettier": "^5.5.4",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.1.5",
+    "prettier": "^3.6.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "@apollo/server": "^4.12.2",
+    "@as-integrations/fastify": "^3.0.0",
+    "@fastify/cors": "^11.1.0",
+    "@fastify/helmet": "^13.0.1",
+    "@fastify/rate-limit": "^10.3.0",
+    "@graphql-tools/schema": "^10.0.25",
+    "fastify": "^5.5.0",
+    "graphql": "^16.11.0"
+  }
+}
