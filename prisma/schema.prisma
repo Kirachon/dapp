@@ -1,0 +1,157 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enums
+enum VerificationLevel {
+  UNVERIFIED
+  BASIC
+  VERIFIED
+  HIGH
+}
+
+enum SwipeDirection {
+  LEFT
+  RIGHT
+  SUPER
+}
+
+enum MatchStatus {
+  ACTIVE
+  UNMATCHED
+  BLOCKED
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  SYSTEM
+}
+
+enum ProfileVisibility {
+  PUBLIC
+  PRIVATE
+  MATCHES_ONLY
+}
+
+// Core Models
+model User {
+  id                 String              @id @default(uuid())
+  email              String              @unique
+  passwordHash       String
+  roles              String[]            @default([]) // RBAC roles
+  verificationLevel  VerificationLevel   @default(UNVERIFIED)
+  createdAt          DateTime            @default(now())
+  lastActive         DateTime?
+  deletedAt          DateTime?
+
+  // Relations
+  profile            Profile?
+  preferences        Preferences?
+  location           Location?
+  swipes             Swipe[]             @relation("UserSwipes")
+  swipedBy           Swipe[]             @relation("TargetSwipes")
+  matchesA           Match[]             @relation("MatchesA")
+  matchesB           Match[]             @relation("MatchesB")
+  messages           Message[]
+}
+
+model Profile {
+  userId        String   @id
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name          String
+  age           Int
+  gender        String?
+  orientation   String?
+  bio           String?
+  interests     String[] @default([])
+  lifestyle     Json?
+  education     String?
+  photos        String[] @default([])
+  videoIntroUrl String?
+  prompts       String[] @default([])
+  visibility    ProfileVisibility @default(PUBLIC)
+}
+
+model Preferences {
+  userId          String @id
+  user            User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  minAge          Int    @default(18)
+  maxAge          Int    @default(55)
+  distanceKm      Int    @default(50)
+  showMe          String? // e.g., gender filter
+  advancedFilters Json?
+}
+
+model Location {
+  userId    String   @id
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  latitude  Float
+  longitude Float
+  updatedAt DateTime @updatedAt
+
+  @@index([latitude, longitude])
+}
+
+model Swipe {
+  id           String         @id @default(uuid())
+  userId       String
+  targetUserId String
+  direction    SwipeDirection
+  createdAt    DateTime       @default(now())
+
+  user         User           @relation("UserSwipes", fields: [userId], references: [id], onDelete: Cascade)
+  targetUser   User           @relation("TargetSwipes", fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  @@index([userId, targetUserId, createdAt])
+}
+
+model Match {
+  id        String       @id @default(uuid())
+  userIdA   String
+  userIdB   String
+  createdAt DateTime     @default(now())
+  status    MatchStatus  @default(ACTIVE)
+  reason    String?
+
+  userA     User         @relation("MatchesA", fields: [userIdA], references: [id], onDelete: Cascade)
+  userB     User         @relation("MatchesB", fields: [userIdB], references: [id], onDelete: Cascade)
+  convo     Conversation?
+
+  @@unique([userIdA, userIdB])
+}
+
+model Conversation {
+  id            String   @id @default(uuid())
+  matchId       String   @unique
+  createdAt     DateTime @default(now())
+  lastMessageAt DateTime?
+
+  match         Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  messages      Message[]
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  senderId       String
+  type           MessageType  @default(TEXT)
+  content        String?
+  mediaUrls      String[]     @default([])
+  createdAt      DateTime     @default(now())
+  readAt         DateTime?
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
