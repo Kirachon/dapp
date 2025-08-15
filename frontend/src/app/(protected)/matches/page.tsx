@@ -10,7 +10,7 @@ export default function MatchesPage() {
     <div className="mx-auto max-w-xl p-6">
       <h1 className="text-2xl font-semibold mb-4">Matches</h1>
       <ul className="space-y-3">
-        {items.map((m: any) => (
+        {items.map((m: { id: string; createdAt: string; otherUser?: { name?: string } }) => (
           <li key={m.id} className="border rounded p-3 flex items-center justify-between">
             <div>
               <div className="font-medium">{m.otherUser?.name}</div>

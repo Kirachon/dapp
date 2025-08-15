@@ -14,7 +14,7 @@ export default function ChatPage() {
   const [read] = useMutation(READ);
   const [text, setText] = useState("");
 
-  const convo = (data?.myConversations ?? []).find((c: any) => c.id === params.id);
+  const convo = (data?.myConversations as Array<{ id: string; otherUser?: { name?: string } }> | undefined)?.find((c) => c.id === params.id);
 
   return (
     <div className="mx-auto max-w-xl p-6 space-y-4">
