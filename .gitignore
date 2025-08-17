@@ -13,6 +13,10 @@ out/
 .next/
 .nuxt/
 
+# Large documentation files (keep in separate docs repo)
+compass_artifact_wf-*.md
+dating-app-spec-*.md
+
 # Environment variables
 .env
 .env.local
