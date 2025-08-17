@@ -17,13 +17,19 @@ out/
 compass_artifact_wf-*.md
 dating-app-spec-*.md
 
-# Environment variables
+# Environment variables (SECURITY CRITICAL)
 .env
+.env.*
+!.env.example
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 .env.docker
+.env.staging
+.env.prod
+.env.development
+.env.production
 
 # Database
 *.db
@@ -112,7 +118,49 @@ update-admin-id.sql
 
 # Development artifacts
 test-graphql.js
-utputFormat
+
+# Security sensitive files (CRITICAL)
+*.key
+*.pem
+*.p12
+*.jks
+*.keystore
+*.crt
+*.cert
+*.pfx
+config/secrets.*
+config/production.*
+secrets/
+private/
+.secrets
+.private
+
+# API keys and tokens
+*api-key*
+*secret*
+*token*
+*credentials*
+.auth
+auth.json
+service-account*.json
+
+# Database dumps and backups
+*.dump
+*.backup
+*.bak
+*.sql.gz
+*.db.backup
+database-backup*
+
+# Local configuration files
+config.local.*
+settings.local.*
+local.config.*
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
 
 # Docker
 .dockerignore
