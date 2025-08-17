@@ -101,6 +101,15 @@ temp/
 *.backup
 *.bak
 
+# Development SQL scripts
+create-admin.sql
+update-admin-id.sql
+*.sql.temp
+
+# Development artifacts
+test-graphql.js
+utputFormat
+
 # Docker
 .dockerignore
 

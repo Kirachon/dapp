@@ -2,6 +2,8 @@
 
 import React, { createContext, useContext, useMemo, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { SuperTokens, EmailPassword, Session } from '@/lib/supertokens';
+import { useQuery, gql } from '@apollo/client';
 
 interface User {
   id: string;
@@ -23,140 +25,182 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Mock users for development
-const MOCK_USERS = {
-  'admin@loveconnect.com': {
-    id: 'admin-1',
-    email: 'admin@loveconnect.com',
-    password: 'admin123',
-    roles: ['admin', 'user'],
-    isAdmin: true,
-    hasProfile: true
-  },
-  'user@example.com': {
-    id: 'user-1',
-    email: 'user@example.com',
-    password: 'user123',
-    roles: ['user'],
-    isAdmin: false,
-    hasProfile: true
+// GraphQL query to get user profile and roles
+const GET_USER_PROFILE = gql`
+  query GetUserProfile {
+    me {
+      id
+      email
+      profile {
+        id
+        name
+        isAdmin
+      }
+    }
   }
-};
+`;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
+  // GraphQL query to get user data
+  const { data: userData, loading: userLoading, refetch: refetchUser } = useQuery(GET_USER_PROFILE, {
+    skip: !Session.doesSessionExist(),
+    errorPolicy: 'ignore',
+    fetchPolicy: 'cache-and-network'
+  });
+
   // Check for existing session on mount
   useEffect(() => {
-    const checkAuth = () => {
+    const checkAuth = async () => {
       try {
-        const storedUser = localStorage.getItem('auth_user');
-        if (storedUser) {
-          const userData = JSON.parse(storedUser);
-          setUser(userData);
+        const sessionExists = await Session.doesSessionExist();
+
+        if (sessionExists) {
+          // Session exists, user data will be fetched by GraphQL query
+          setLoading(false);
+        } else {
+          // No session
+          setUser(null);
+          setLoading(false);
         }
       } catch (error) {
         console.error('Error checking auth:', error);
-        localStorage.removeItem('auth_user');
-      } finally {
+        setUser(null);
         setLoading(false);
       }
     };
 
-    // Add a small delay to ensure localStorage is available
-    const timer = setTimeout(checkAuth, 100);
+    checkAuth();
 
-    // Listen for storage changes to sync auth state across tabs
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'auth_user') {
-        if (e.newValue) {
-          setUser(JSON.parse(e.newValue));
-        } else {
-          setUser(null);
-        }
-      }
+    // Listen for session changes
+    const handleSessionChange = () => {
+      checkAuth();
     };
 
-    window.addEventListener('storage', handleStorageChange);
+    // SuperTokens session change listener
+    Session.addEventListener('SESSION_CREATED', handleSessionChange);
+    Session.addEventListener('UNAUTHORISED', handleSessionChange);
 
     return () => {
-      clearTimeout(timer);
-      window.removeEventListener('storage', handleStorageChange);
+      Session.removeEventListener('SESSION_CREATED', handleSessionChange);
+      Session.removeEventListener('UNAUTHORISED', handleSessionChange);
     };
   }, []);
+
+  // Update user state when GraphQL data changes
+  useEffect(() => {
+    if (userData?.me) {
+      const profile = userData.me.profile;
+      setUser({
+        id: userData.me.id,
+        email: userData.me.email,
+        roles: profile?.isAdmin ? ['admin', 'user'] : ['user'],
+        isAdmin: profile?.isAdmin || false
+      });
+    } else if (!userLoading && Session.doesSessionExist()) {
+      // Session exists but no user data - might be a new user without profile
+      setUser({
+        id: 'unknown',
+        email: 'unknown',
+        roles: ['user'],
+        isAdmin: false
+      });
+    }
+  }, [userData, userLoading]);
 
   const signIn = async (email: string, password: string): Promise<boolean> => {
     setLoading(true);
 
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 500));
+    try {
+      const response = await EmailPassword.signIn({
+        formFields: [
+          { id: 'email', value: email },
+          { id: 'password', value: password }
+        ]
+      });
 
-    const mockUser = MOCK_USERS[email as keyof typeof MOCK_USERS];
-
-    if (mockUser && mockUser.password === password) {
-      const userData: User = {
-        id: mockUser.id,
-        email: mockUser.email,
-        roles: mockUser.roles,
-        isAdmin: mockUser.isAdmin
-      };
-
-      setUser(userData);
-      localStorage.setItem('auth_user', JSON.stringify(userData));
+      if (response.status === 'OK') {
+        // Session created successfully, user data will be fetched by GraphQL
+        await refetchUser();
+        setLoading(false);
+        return true;
+      } else if (response.status === 'WRONG_CREDENTIALS_ERROR') {
+        setLoading(false);
+        return false;
+      } else {
+        console.error('Sign in error:', response);
+        setLoading(false);
+        return false;
+      }
+    } catch (error) {
+      console.error('Sign in error:', error);
       setLoading(false);
-      return true;
+      return false;
     }
-
-    setLoading(false);
-    return false;
   };
 
   const signUp = async (email: string, password: string): Promise<boolean> => {
     setLoading(true);
 
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 500));
+    try {
+      const response = await EmailPassword.signUp({
+        formFields: [
+          { id: 'email', value: email },
+          { id: 'password', value: password }
+        ]
+      });
 
-    // For demo, create a new user
-    const userData: User = {
-      id: `user-${Date.now()}`,
-      email,
-      roles: ['user'],
-      isAdmin: false
-    };
-
-    setUser(userData);
-    localStorage.setItem('auth_user', JSON.stringify(userData));
-    setLoading(false);
-    return true;
+      if (response.status === 'OK') {
+        // Account created successfully, session created
+        await refetchUser();
+        setLoading(false);
+        return true;
+      } else if (response.status === 'EMAIL_ALREADY_EXISTS_ERROR') {
+        setLoading(false);
+        return false;
+      } else {
+        console.error('Sign up error:', response);
+        setLoading(false);
+        return false;
+      }
+    } catch (error) {
+      console.error('Sign up error:', error);
+      setLoading(false);
+      return false;
+    }
   };
 
   const signOut = async (): Promise<void> => {
-    setUser(null);
-    localStorage.removeItem('auth_user');
-    router.push('/');
+    try {
+      await Session.signOut();
+      setUser(null);
+      router.push('/');
+    } catch (error) {
+      console.error('Sign out error:', error);
+    }
   };
 
   const refetch = async (): Promise<void> => {
-    // In a real app, this would refetch user data from the server
-    const storedUser = localStorage.getItem('auth_user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
+    try {
+      await refetchUser();
+    } catch (error) {
+      console.error('Refetch error:', error);
     }
   };
 
   const value = useMemo<AuthContextType>(() => ({
     user,
-    isAuthenticated: !!user,
-    hasProfile: !!user, // For demo, assume all users have profiles
-    loading,
+    isAuthenticated: !!user && Session.doesSessionExist(),
+    hasProfile: !!user && user.id !== 'unknown', // Has profile if user data is complete
+    loading: loading || userLoading,
     signIn,
     signUp,
     signOut,
     refetch,
-  }), [user, loading]);
+  }), [user, loading, userLoading]);
 
   return (
     <AuthContext.Provider value={value}>

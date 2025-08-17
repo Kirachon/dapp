@@ -81,6 +81,9 @@ model Profile {
 
   @@index([age])
   @@index([gender])
+  @@index([visibility])
+  @@index([age, gender])
+  @@index([gender, visibility])
 }
 
 model Preferences {
@@ -144,6 +147,8 @@ model Conversation {
 
   match         Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
   messages      Message[]
+
+  @@index([lastMessageAt])
 }
 
 model Message {
