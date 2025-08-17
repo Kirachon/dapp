@@ -1,7 +1,121 @@
-node_modules
-dist
-# Keep environment variables out of version control
-.env
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
+# Build outputs
+dist/
+build/
+out/
+.next/
+.nuxt/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.docker
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
 /src/generated/prisma
+prisma/migrations/
+
+# Logs
+logs/
 *.log
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory
+coverage/
+*.lcov
+.nyc_output
+
+# Cache directories
+.cache/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+.npm
+.yarn-integrity
+
+# TypeScript
+*.tsbuildinfo
+
+# Test outputs
+test-results/
+playwright-report/
+frontend/test-results/
+frontend/playwright-report/
+
+# IDEs and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Design files (keep in separate design repository)
+gui design/
+*.sketch
+*.fig
+*.psd
+*.ai
+
+# Documentation (should be in wiki/separate repo)
+docs/
+
+# Scripts that are environment-specific
+scripts/performance-test.js
+scripts/security-audit.js
+
+# Seed files (should be in separate data repository)
+seed.js
+*.seed.js
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.backup
+*.bak
+
+# Docker
+.dockerignore
+
+# Deployment
+.vercel/
+.netlify/
+
+# SSL certificates
+*.pem
+*.key
+*.crt
+
+# Package manager files (keep package-lock.json for consistency)
+# yarn.lock
+# pnpm-lock.yaml
+
+# Optional: Uncomment if using different package manager
+# package-lock.json
