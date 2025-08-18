@@ -59,6 +59,7 @@
     "typescript": "^5.9.2"
   },
   "dependencies": {
+    "@apollo/client": "^3.13.9",
     "@apollo/server": "^4.12.2",
     "@as-integrations/fastify": "^3.0.0",
     "@fastify/cookie": "^11.0.2",

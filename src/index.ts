@@ -8,8 +8,10 @@ import multipart from '@fastify/multipart';
 import { ApolloServer } from '@apollo/server';
 import { fastifyApolloDrainPlugin, fastifyApolloHandler } from '@as-integrations/fastify';
 import { makeExecutableSchema } from '@graphql-tools/schema';
+import { WebSocketServer } from 'ws';
+import { useServer } from 'graphql-ws/use/ws';
+import { createServer } from 'http';
 import supertokens, { getUser as stGetUser } from 'supertokens-node';
-import EmailPassword from 'supertokens-node/recipe/emailpassword';
 // Import internal core class to access instance methods in TS
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
@@ -831,7 +833,40 @@ const corsConfig = { origin: true, credentials: true, allowedHeaders: [
     // Make it globally available for match notifications
     (global as any).socketService = socketIOService;
 
+    // Initialize GraphQL WebSocket subscriptions
+    const wsServer = new WebSocketServer({
+      server: server.server as any,
+      path: '/graphql',
+    });
+
+    const serverCleanup = useServer(
+      {
+        schema,
+        context: async (ctx: any) => {
+          // Authentication context for WebSocket
+          try {
+            // For now, we'll skip authentication for WebSocket subscriptions
+            // In production, you'd want to authenticate using connection params
+            return {
+              user: null, // TODO: Implement WebSocket authentication
+              prisma,
+            };
+          } catch (error) {
+            console.error('WebSocket authentication error:', error);
+            return { user: null, prisma };
+          }
+        },
+      },
+      wsServer
+    );
+
     server.log.info('🔌 Socket.IO initialized');
+    server.log.info('📡 GraphQL WebSocket subscriptions initialized');
+
+    // Cleanup on server shutdown
+    process.on('SIGTERM', async () => {
+      await serverCleanup.dispose();
+    });
   } catch (err) {
     server.log.error(err);
     process.exit(1);

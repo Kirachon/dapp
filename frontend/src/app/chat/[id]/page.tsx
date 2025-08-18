@@ -1,17 +1,108 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
+import { useQuery, useMutation, useSubscription, gql } from '@apollo/client';
+import { io, Socket } from 'socket.io-client';
+
+// GraphQL Queries and Mutations
+const GET_MESSAGES_QUERY = gql`
+  query GetMessages($conversationId: ID!, $page: Int, $pageSize: Int) {
+    messages(conversationId: $conversationId, page: $page, pageSize: $pageSize) {
+      id
+      content
+      senderId
+      createdAt
+      readAt
+      type
+      mediaUrls
+    }
+  }
+`;
+
+const GET_CONVERSATION_QUERY = gql`
+  query GetConversation($conversationId: ID!) {
+    myConversations(page: 1, pageSize: 1) {
+      id
+      matchId
+      lastMessageAt
+      unreadCount
+      otherUser {
+        userId
+        name
+        photos
+        age
+      }
+    }
+  }
+`;
+
+const SEND_MESSAGE_MUTATION = gql`
+  mutation SendMessage($conversationId: ID!, $content: String, $mediaUrls: [String!]) {
+    sendMessage(conversationId: $conversationId, content: $content, mediaUrls: $mediaUrls) {
+      id
+      content
+      senderId
+      createdAt
+      readAt
+      type
+      mediaUrls
+    }
+  }
+`;
+
+const MARK_CONVERSATION_READ_MUTATION = gql`
+  mutation MarkConversationRead($conversationId: ID!) {
+    markConversationRead(conversationId: $conversationId)
+  }
+`;
+
+// GraphQL Subscriptions
+const MESSAGE_ADDED_SUBSCRIPTION = gql`
+  subscription MessageAdded($conversationId: ID!) {
+    messageAdded(conversationId: $conversationId) {
+      id
+      content
+      senderId
+      type
+      mediaUrls
+      createdAt
+      readAt
+    }
+  }
+`;
+
+const MESSAGE_READ_SUBSCRIPTION = gql`
+  subscription MessageRead($conversationId: ID!) {
+    messageRead(conversationId: $conversationId) {
+      conversationId
+      messageId
+      readBy
+      readAt
+    }
+  }
+`;
+
+const USER_TYPING_SUBSCRIPTION = gql`
+  subscription UserTyping($conversationId: ID!) {
+    userTyping(conversationId: $conversationId) {
+      conversationId
+      userId
+      isTyping
+    }
+  }
+`;
 
 interface Message {
   id: string;
   senderId: string;
   content: string;
-  type: 'text' | 'image' | 'emoji';
-  timestamp: Date;
-  status: 'sending' | 'sent' | 'delivered' | 'read';
+  type: 'TEXT' | 'IMAGE' | 'VIDEO';
+  createdAt: string;
+  readAt?: string;
+  mediaUrls?: string[];
 }
 
 interface ChatUser {
@@ -22,56 +113,146 @@ interface ChatUser {
   lastSeen?: Date;
 }
 
+interface SocketMessage {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  type: 'TEXT' | 'IMAGE' | 'VIDEO';
+  content: string;
+  mediaUrls: string[];
+  createdAt: string;
+  readAt?: string;
+}
+
 export default function ChatPage() {
   const router = useRouter();
   const params = useParams();
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [otherUserTyping, setOtherUserTyping] = useState(false);
   const [chatUser, setChatUser] = useState<ChatUser | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Mock data for demonstration
+  const conversationId = params.id as string;
+
+  // GraphQL Queries
+  const { data: messagesData, loading: messagesLoading, error: messagesError, refetch: refetchMessages } = useQuery(GET_MESSAGES_QUERY, {
+    variables: {
+      conversationId,
+      page: 1,
+      pageSize: 50
+    },
+    skip: !conversationId || !isAuthenticated,
+    notifyOnNetworkStatusChange: true,
+  });
+
+  const { data: conversationData, loading: conversationLoading } = useQuery(GET_CONVERSATION_QUERY, {
+    variables: { conversationId },
+    skip: !conversationId || !isAuthenticated,
+  });
+
+  const [sendMessageMutation] = useMutation(SEND_MESSAGE_MUTATION);
+  const [markConversationReadMutation] = useMutation(MARK_CONVERSATION_READ_MUTATION);
+
+  // GraphQL Subscriptions
+  const { data: newMessageData } = useSubscription(MESSAGE_ADDED_SUBSCRIPTION, {
+    variables: { conversationId },
+    skip: !conversationId || !isAuthenticated,
+  });
+
+  const { data: messageReadData } = useSubscription(MESSAGE_READ_SUBSCRIPTION, {
+    variables: { conversationId },
+    skip: !conversationId || !isAuthenticated,
+  });
+
+  const { data: typingData } = useSubscription(USER_TYPING_SUBSCRIPTION, {
+    variables: { conversationId },
+    skip: !conversationId || !isAuthenticated,
+  });
+
+  // Set connection status based on GraphQL subscriptions
   useEffect(() => {
-    setChatUser({
-      id: params.id as string,
-      name: 'Sarah Johnson',
-      avatar: '/placeholder-avatar.png',
-      isOnline: true,
-      lastSeen: new Date()
-    });
+    // For now, assume connected if authenticated
+    setIsConnected(isAuthenticated);
+  }, [isAuthenticated]);
 
-    setMessages([
-      {
-        id: '1',
-        senderId: params.id as string,
-        content: 'Hey! How are you doing? 😊',
-        type: 'text',
-        timestamp: new Date(Date.now() - 3600000),
-        status: 'read'
-      },
-      {
-        id: '2',
-        senderId: user?.id || 'me',
-        content: 'Hi Sarah! I\'m doing great, thanks for asking! How about you?',
-        type: 'text',
-        timestamp: new Date(Date.now() - 3500000),
-        status: 'read'
-      },
-      {
-        id: '3',
-        senderId: params.id as string,
-        content: 'I\'m wonderful! Just got back from a hiking trip. The views were amazing! 🏔️',
-        type: 'text',
-        timestamp: new Date(Date.now() - 3400000),
-        status: 'read'
+  // Load messages from GraphQL
+  useEffect(() => {
+    if (messagesData?.messages) {
+      setMessages(messagesData.messages);
+    }
+  }, [messagesData]);
+
+  // Set chat user from conversation data
+  useEffect(() => {
+    if (conversationData?.myConversations?.[0]?.otherUser) {
+      const otherUser = conversationData.myConversations[0].otherUser;
+      setChatUser({
+        id: otherUser.userId,
+        name: otherUser.name,
+        avatar: otherUser.photos?.[0] || '/placeholder-avatar.png',
+        isOnline: false, // Will be updated by socket events
+        lastSeen: new Date(),
+      });
+    }
+  }, [conversationData]);
+
+  // Handle new messages from GraphQL subscription
+  useEffect(() => {
+    if (newMessageData?.messageAdded) {
+      const newMessage = newMessageData.messageAdded;
+      console.log('📨 New message received via GraphQL:', newMessage);
+
+      setMessages(prev => {
+        const exists = prev.find(msg => msg.id === newMessage.id);
+        if (exists) return prev;
+
+        return [...prev, newMessage].sort((a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
+      });
+    }
+  }, [newMessageData]);
+
+  // Handle message read events
+  useEffect(() => {
+    if (messageReadData?.messageRead) {
+      const readEvent = messageReadData.messageRead;
+      console.log('✅ Message read event:', readEvent);
+
+      if (readEvent.readBy !== user?.id) {
+        setMessages(prev => prev.map(msg =>
+          msg.senderId === user?.id && !msg.readAt
+            ? { ...msg, readAt: readEvent.readAt }
+            : msg
+        ));
       }
-    ]);
-  }, [params.id, user?.id]);
+    }
+  }, [messageReadData, user?.id]);
+
+  // Handle typing indicators
+  useEffect(() => {
+    if (typingData?.userTyping) {
+      const typing = typingData.userTyping;
+      console.log('⌨️ Typing event:', typing);
+
+      if (typing.userId !== user?.id) {
+        setOtherUserTyping(typing.isTyping);
+
+        // Clear typing indicator after 3 seconds
+        if (typing.isTyping) {
+          setTimeout(() => setOtherUserTyping(false), 3000);
+        }
+      }
+    }
+  }, [typingData, user?.id]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -81,32 +262,52 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages]);
 
-  const handleSendMessage = () => {
+  const handleSendMessage = useCallback(async () => {
     if (!newMessage.trim()) return;
 
-    const message: Message = {
-      id: Date.now().toString(),
-      senderId: user?.id || 'me',
-      content: newMessage,
-      type: 'text',
-      timestamp: new Date(),
-      status: 'sending'
-    };
-
-    setMessages(prev => [...prev, message]);
+    const messageContent = newMessage.trim();
     setNewMessage('');
 
-    // Simulate message delivery
-    setTimeout(() => {
-      setMessages(prev => 
-        prev.map(msg => 
-          msg.id === message.id 
-            ? { ...msg, status: 'delivered' }
-            : msg
-        )
-      );
-    }, 1000);
-  };
+    try {
+      // Send via GraphQL mutation (which will trigger the subscription)
+      await sendMessageMutation({
+        variables: {
+          conversationId,
+          content: messageContent,
+          mediaUrls: [],
+        },
+      });
+
+      console.log('✅ Message sent successfully');
+    } catch (error) {
+      console.error('❌ Failed to send message:', error);
+      // Re-add message to input on failure
+      setNewMessage(messageContent);
+    }
+  }, [newMessage, conversationId, sendMessageMutation]);
+
+  // Handle typing indicators (simplified for now)
+  const handleInputChange = useCallback((value: string) => {
+    setNewMessage(value);
+
+    // Clear previous timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    // Set local typing state
+    const isTypingNow = value.length > 0;
+    if (isTypingNow !== isTyping) {
+      setIsTyping(isTypingNow);
+    }
+
+    // Set timeout to stop typing indicator
+    if (isTypingNow) {
+      typingTimeoutRef.current = setTimeout(() => {
+        setIsTyping(false);
+      }, 1000);
+    }
+  }, [isTyping]);
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -115,11 +316,68 @@ export default function ChatPage() {
     }
   };
 
-  const formatTime = (date: Date) => {
+  const formatTime = (dateString: string | Date) => {
+    const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  // Mark messages as read when component mounts or messages change
+  useEffect(() => {
+    if (!conversationId || !user?.id) return;
+
+    const unreadMessages = messages.filter(
+      msg => msg.senderId !== user?.id && !msg.readAt
+    );
+
+    if (unreadMessages.length > 0) {
+      // Mark as read via GraphQL mutation
+      markConversationReadMutation({
+        variables: { conversationId }
+      }).catch(console.error);
+    }
+  }, [messages, conversationId, user?.id, markConversationReadMutation]);
+
   const emojis = ['😊', '😂', '❤️', '👍', '🔥', '💯', '🎉', '😍', '🤔', '👋', '💕', '✨'];
+
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.push('/signin');
+    }
+  }, [isAuthenticated, router]);
+
+  // Loading state
+  if (messagesLoading || conversationLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#667eea] to-[#764ba2] flex items-center justify-center">
+        <div className="glass-card p-8 rounded-3xl backdrop-blur-lg border border-white/30">
+          <div className="flex items-center gap-3">
+            <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+            <span className="text-white">Loading conversation...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (messagesError) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#667eea] to-[#764ba2] flex items-center justify-center">
+        <div className="glass-card p-8 rounded-3xl backdrop-blur-lg border border-white/30 text-center">
+          <div className="text-6xl mb-4">😞</div>
+          <h3 className="text-xl font-semibold text-white mb-3">Oops! Something went wrong</h3>
+          <p className="text-white/80 mb-6">Unable to load the conversation. Please try again.</p>
+          <button
+            onClick={() => refetchMessages()}
+            className="px-6 py-3 bg-gradient-to-r from-[#ff6b6b] to-[#ff8e53] text-white rounded-xl hover:from-[#ff5252] hover:to-[#ff7043] transition-all"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#667eea] to-[#764ba2] flex flex-col relative overflow-hidden">
@@ -158,7 +416,17 @@ export default function ChatPage() {
               <div>
                 <h2 className="text-white font-semibold">{chatUser.name}</h2>
                 <p className="text-white/70 text-xs">
-                  {chatUser.isOnline ? 'Active now' : `Last seen ${formatTime(chatUser.lastSeen!)}`}
+                  {!isConnected ? (
+                    <span className="flex items-center gap-1">
+                      <div className="w-2 h-2 bg-red-400 rounded-full"></div>
+                      Connecting...
+                    </span>
+                  ) : otherUserTyping ? (
+                    <span className="flex items-center gap-1">
+                      <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+                      Typing...
+                    </span>
+                  ) : chatUser.isOnline ? 'Active now' : `Last seen ${formatTime(chatUser.lastSeen!)}`}
                 </p>
               </div>
             </div>
@@ -223,13 +491,11 @@ export default function ChatPage() {
                       <p className="text-sm leading-relaxed">{message.content}</p>
                     </div>
                     <div className={`flex items-center gap-1 mt-1 text-xs text-white/60 ${isMe ? 'justify-end' : 'justify-start'}`}>
-                      <span>{formatTime(message.timestamp)}</span>
+                      <span>{formatTime(message.createdAt)}</span>
                       {isMe && (
                         <span className="ml-1">
-                          {message.status === 'sending' && '⏳'}
-                          {message.status === 'sent' && '✓'}
-                          {message.status === 'delivered' && '✓✓'}
-                          {message.status === 'read' && '✓✓'}
+                          {!message.readAt && '✓'}
+                          {message.readAt && '✓✓'}
                         </span>
                       )}
                     </div>
@@ -313,10 +579,11 @@ export default function ChatPage() {
                   ref={inputRef}
                   type="text"
                   value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
+                  onChange={(e) => handleInputChange(e.target.value)}
                   onKeyPress={handleKeyPress}
                   placeholder="Type a message..."
                   className="w-full bg-transparent text-white placeholder-white/60 focus:outline-none text-sm"
+                  disabled={!isConnected}
                 />
               </div>
 
