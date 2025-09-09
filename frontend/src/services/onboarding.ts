@@ -424,8 +424,8 @@ class OnboardingService {
       errors.push('At least 2 photos are required');
     }
 
-    if (data.photos && data.photos.length > 9) {
-      errors.push('Maximum 9 photos allowed');
+    if (data.photos && data.photos.length > 6) {
+      errors.push('Maximum 6 photos allowed');
     }
 
     return errors;
@@ -452,8 +452,8 @@ class OnboardingService {
       errors.push('Minimum age must be between 18 and 99');
     }
 
-    if (data.maxAge < 18 || data.maxAge > 99) {
-      errors.push('Maximum age must be between 18 and 99');
+    if (data.maxAge < 18 || data.maxAge > 100) {
+      errors.push('Maximum age must be between 18 and 100');
     }
 
     if (data.minAge >= data.maxAge) {
