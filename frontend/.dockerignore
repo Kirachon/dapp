@@ -1,0 +1,27 @@
+# Ignore heavy/unnecessary files in build context
+node_modules
+.next
+dist
+playwright-report
+test-results
+coverage
+.git
+.DS_Store
+
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# VCS / metadata
+.git
+.github
+.gitattributes
+
+# Editor/OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+*.log

@@ -1,91 +1,109 @@
 services:
-  api:
-    build: .
-    container_name: app-api
-    env_file: .env.docker
-    ports:
-      - "8080:8080"
-    depends_on:
-      - postgres
-      - redis
-      - minio
-      - mailhog
-    networks:
-      - app-network
 
-  frontend:
-    build: ./frontend
-    container_name: app-frontend
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8080/graphql
-    ports:
-      - "3000:3000"
-    depends_on:
-      - api
 
+  # PostgreSQL Database
   postgres:
     image: postgis/postgis:16-3.4
-    container_name: app-postgres
+    container_name: loveconnect-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-dating}
       POSTGRES_USER: ${POSTGRES_USER:-app}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-app}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-dating}"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
     ports:
-      - "5432:5432"
+      - "5433:5432"
     networks:
       - app-network
+    restart: unless-stopped
 
+  # Redis for Session Storage
   redis:
     image: redis:7-alpine
-    container_name: app-redis
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    container_name: loveconnect-redis
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
     ports:
       - "6379:6379"
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
+  # MinIO Object Storage
   minio:
     image: minio/minio:latest
-    container_name: app-minio
+    container_name: loveconnect-minio
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio123}
+      MINIO_BROWSER_REDIRECT_URL: http://localhost:9001
     command: server /data --console-address ":9001"
     volumes:
       - minio-data:/data
     ports:
       - "9000:9000"
       - "9001:9001"
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
 
+  # MailHog for Email Testing
   mailhog:
     image: mailhog/mailhog:latest
-    container_name: app-mailhog
+    container_name: loveconnect-mailhog
     ports:
       - "1025:1025" # SMTP
       - "8025:8025" # Web UI
-
-  supertokens:
-    image: registry.supertokens.io/supertokens/supertokens-postgresql:latest
-    container_name: app-supertokens
-    depends_on:
-      - postgres
-    ports:
-      - "3567:3567"
-    environment:
-      POSTGRESQL_CONNECTION_URI: "postgresql://app:app@app-postgres:5432/dating"
-      POSTGRESQL_TABLE_NAMES_PREFIX: "st_"
     networks:
       - app-network
     restart: unless-stopped
 
+  # SuperTokens Authentication Service
+  supertokens:
+    image: registry.supertokens.io/supertokens/supertokens-postgresql:latest
+    container_name: loveconnect-supertokens
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3567:3567"
+    environment:
+      POSTGRESQL_CONNECTION_URI: "postgresql://app:app@loveconnect-postgres:5432/supertokens"
+      POSTGRESQL_TABLE_NAMES_PREFIX: "st_"
+      SUPERTOKENS_PORT: "3567"
+      API_KEYS: "supertokens-dev-api-key-12345678901234567890"
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3567/hello"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
 volumes:
   pgdata:
+    driver: local
   minio-data:
+    driver: local
 
 networks:
   app-network:

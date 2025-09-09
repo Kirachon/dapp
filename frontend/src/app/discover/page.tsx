@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, gql } from '@apollo/client';
 import { Button } from '@/components/ui/Button';
@@ -10,6 +10,7 @@ import { calculateAge } from '@/lib/utils';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { Navigation, Pagination } from 'swiper/modules';
+import { io, Socket } from 'socket.io-client';
 import 'swiper/css';
 import 'swiper/css/navigation';
 import 'swiper/css/pagination';
@@ -56,6 +57,15 @@ export default function DiscoverPage() {
   const [matchData, setMatchData] = useState<any>(null);
   const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
 
+  // Socket.IO test interface state
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [testMessage, setTestMessage] = useState('');
+  const [receivedMessages, setReceivedMessages] = useState<string[]>([]);
+  const [showTestInterface, setShowTestInterface] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState('Disconnected');
+  const socketRef = useRef<Socket | null>(null);
+
   const router = useRouter();
   const { isAuthenticated, hasProfile } = useAuth();
 
@@ -91,6 +101,57 @@ export default function DiscoverPage() {
   //   return null;
   // }
 
+  // Socket.IO initialization for testing
+  useEffect(() => {
+    console.log('🔌 Initializing Socket.IO client on discover page...');
+
+    const newSocket = io('http://localhost:8080', {
+      transports: ['websocket', 'polling'],
+      withCredentials: true,
+      query: {
+        test: 'true'
+      }
+    });
+
+    newSocket.on('connect', () => {
+      console.log('✅ Socket.IO connected on discover page');
+      setIsConnected(true);
+      setConnectionStatus('Connected');
+      setSocket(newSocket);
+      socketRef.current = newSocket;
+    });
+
+    newSocket.on('disconnect', () => {
+      console.log('❌ Socket.IO disconnected on discover page');
+      setIsConnected(false);
+      setConnectionStatus('Disconnected');
+    });
+
+    newSocket.on('test-message', (data: { message: string; timestamp: string }) => {
+      console.log('📨 Received test message:', data);
+      setReceivedMessages(prev => [...prev, `${data.timestamp}: ${data.message}`]);
+    });
+
+    newSocket.on('new_match', (data: { matchId: string; message: string; timestamp: Date }) => {
+      console.log('💕 New match notification:', data);
+      // Show match modal immediately
+      setMatchData({ matchId: data.matchId });
+      setShowMatchModal(true);
+    });
+
+    newSocket.on('connect_error', (error) => {
+      console.error('❌ Socket.IO connection error:', error);
+      setConnectionStatus(`Error: ${error.message}`);
+    });
+
+    // Cleanup on unmount
+    return () => {
+      console.log('🔌 Cleaning up Socket.IO connection...');
+      newSocket.disconnect();
+      socketRef.current = null;
+    };
+  }, []);
+
   const profiles: Profile[] = data?.discoveryFeed || [];
   const currentProfile = profiles[currentIndex];
 
@@ -122,6 +183,27 @@ export default function DiscoverPage() {
   const handleMatchModalClose = () => {
     setShowMatchModal(false);
     setMatchData(null);
+  };
+
+  // Socket.IO test functions
+  const sendTestMessage = () => {
+    if (socket && isConnected && testMessage.trim()) {
+      console.log('📤 Sending test message:', testMessage);
+      socket.emit('test-message', {
+        message: testMessage,
+        timestamp: new Date().toISOString(),
+        sender: 'discover-page-test'
+      });
+      setTestMessage('');
+    }
+  };
+
+  const toggleTestInterface = () => {
+    setShowTestInterface(!showTestInterface);
+  };
+
+  const clearMessages = () => {
+    setReceivedMessages([]);
   };
 
   if (loading) {
@@ -192,6 +274,23 @@ export default function DiscoverPage() {
           <span className="font-bold text-xl text-white">Discover</span>
         </div>
         <div className="flex items-center gap-2">
+          {/* Socket.IO Test Button */}
+          <motion.button
+            onClick={toggleTestInterface}
+            className={`p-3 rounded-xl glass-card transition-all ${
+              isConnected
+                ? 'text-green-300 hover:text-green-200 hover:bg-green-500/15'
+                : 'text-red-300 hover:text-red-200 hover:bg-red-500/15'
+            }`}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            title={`Socket.IO: ${connectionStatus}`}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+          </motion.button>
+
           <motion.button
             className="p-3 rounded-xl glass-card text-white/80 hover:text-white hover:bg-white/15 transition-all"
             whileHover={{ scale: 1.05 }}
@@ -450,6 +549,80 @@ export default function DiscoverPage() {
           </div>
         </ModalContent>
       </Modal>
+
+      {/* Socket.IO Test Interface */}
+      {showTestInterface && (
+        <motion.div
+          initial={{ opacity: 0, y: 50 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 50 }}
+          className="fixed bottom-4 right-4 w-80 bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-white/20 p-4 z-50"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-gray-800">Socket.IO Test</h3>
+            <button
+              onClick={toggleTestInterface}
+              className="text-gray-500 hover:text-gray-700 text-xl"
+            >
+              ×
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            {/* Connection Status */}
+            <div className="flex items-center gap-2">
+              <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              <span className="text-sm text-gray-600">{connectionStatus}</span>
+            </div>
+
+            {/* Message Input */}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={testMessage}
+                onChange={(e) => setTestMessage(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && sendTestMessage()}
+                placeholder="Type a test message..."
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={!isConnected}
+              />
+              <button
+                onClick={sendTestMessage}
+                disabled={!isConnected || !testMessage.trim()}
+                className="px-3 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              >
+                Send
+              </button>
+            </div>
+
+            {/* Received Messages */}
+            <div className="max-h-32 overflow-y-auto bg-gray-50 rounded-lg p-2">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-gray-500">Received Messages:</span>
+                {receivedMessages.length > 0 && (
+                  <button
+                    onClick={clearMessages}
+                    className="text-xs text-red-500 hover:text-red-700"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              {receivedMessages.length === 0 ? (
+                <p className="text-xs text-gray-400">No messages received yet</p>
+              ) : (
+                <div className="space-y-1">
+                  {receivedMessages.map((msg, index) => (
+                    <div key={index} className="text-xs text-gray-700 bg-white rounded p-1">
+                      {msg}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 }

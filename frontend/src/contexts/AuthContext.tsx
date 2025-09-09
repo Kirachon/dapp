@@ -1,9 +1,11 @@
 'use client';
 
-import React, { createContext, useContext, useMemo, useState, useEffect } from 'react';
+import React, { createContext, useContext, useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { SuperTokens, EmailPassword, Session } from '@/lib/supertokens';
 import { useQuery, gql } from '@apollo/client';
+import { makeClient } from '@/lib/apollo';
+
 
 interface User {
   id: string;
@@ -18,7 +20,7 @@ interface AuthContextType {
   hasProfile: boolean;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<boolean>;
-  signUp: (email: string, password: string) => Promise<boolean>;
+  signUp: (email: string, password: string, acceptTerms?: boolean) => Promise<boolean>;
   signOut: () => Promise<void>;
   refetch: () => Promise<void>;
 }
@@ -42,76 +44,116 @@ const GET_USER_PROFILE = gql`
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const router = useRouter();
+  const client = makeClient();
 
-  // GraphQL query to get user data
+  const [loading, setLoading] = useState(true);
+  const [sessionExists, setSessionExists] = useState(false);
+  const [isSessionChecked, setIsSessionChecked] = useState(false);
+  const router = useRouter();
+  const sessionCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // GraphQL query to get user data - heavily optimized
   const { data: userData, loading: userLoading, refetch: refetchUser } = useQuery(GET_USER_PROFILE, {
-    skip: !Session.doesSessionExist(),
+    skip: !sessionExists || !isSessionChecked, // Don't run until session is confirmed
     errorPolicy: 'ignore',
-    fetchPolicy: 'cache-and-network'
+    fetchPolicy: 'cache-first',
+    notifyOnNetworkStatusChange: false,
+    pollInterval: 0, // Disable polling
+    returnPartialData: true, // Return partial data immediately
+    context: {
+      timeout: 5000 // 5 second timeout
+    }
   });
 
-  // Check for existing session on mount
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const sessionExists = await Session.doesSessionExist();
+  // Optimized session check with immediate response for better UX
+  const checkAuth = useCallback(async () => {
+    if (sessionCheckTimeoutRef.current) {
+      clearTimeout(sessionCheckTimeoutRef.current);
+    }
 
-        if (sessionExists) {
-          // Session exists, user data will be fetched by GraphQL query
-          setLoading(false);
-        } else {
-          // No session
-          setUser(null);
-          setLoading(false);
-        }
-      } catch (error) {
-        console.error('Error checking auth:', error);
+    try {
+      // Use a faster, non-blocking session check
+      const exists = await Session.doesSessionExist();
+
+      // Batch state updates to prevent multiple re-renders
+      if (exists) {
+        setSessionExists(true);
+        setIsSessionChecked(true);
+        // Don't set loading to false yet - wait for user data
+      } else {
+        // No session - immediately set final state
         setUser(null);
+        setSessionExists(false);
+        setIsSessionChecked(true);
         setLoading(false);
       }
-    };
-
-    checkAuth();
-
-    // Listen for session changes
-    const handleSessionChange = () => {
-      checkAuth();
-    };
-
-    // SuperTokens session change listener
-    Session.addEventListener('SESSION_CREATED', handleSessionChange);
-    Session.addEventListener('UNAUTHORISED', handleSessionChange);
-
-    return () => {
-      Session.removeEventListener('SESSION_CREATED', handleSessionChange);
-      Session.removeEventListener('UNAUTHORISED', handleSessionChange);
-    };
+    } catch (error) {
+      console.error('Error checking auth:', error);
+      // Fail fast - don't block the UI
+      setUser(null);
+      setSessionExists(false);
+      setIsSessionChecked(true);
+      setLoading(false);
+    }
   }, []);
 
-  // Update user state when GraphQL data changes
+  // Check for existing session on mount - optimized for speed
+  useEffect(() => {
+    checkAuth();
+
+    // Interceptors are attached in Apollo via supertokens-web-js fetch wrapper.
+    return () => {
+      if (sessionCheckTimeoutRef.current) {
+        clearTimeout(sessionCheckTimeoutRef.current);
+      }
+    };
+  }, [checkAuth]);
+
+  // Update user state when GraphQL data changes - heavily optimized
   useEffect(() => {
     if (userData?.me) {
       const profile = userData.me.profile;
-      setUser({
+      const newUser = {
         id: userData.me.id,
         email: userData.me.email,
         roles: profile?.isAdmin ? ['admin', 'user'] : ['user'],
         isAdmin: profile?.isAdmin || false
-      });
-    } else if (!userLoading && Session.doesSessionExist()) {
-      // Session exists but no user data - might be a new user without profile
-      setUser({
-        id: 'unknown',
-        email: 'unknown',
-        roles: ['user'],
-        isAdmin: false
-      });
-    }
-  }, [userData, userLoading]);
+      };
 
-  const signIn = async (email: string, password: string): Promise<boolean> => {
+      // Only update if user data actually changed to prevent unnecessary re-renders
+      setUser(prevUser => {
+        if (!prevUser ||
+            prevUser.id !== newUser.id ||
+            prevUser.email !== newUser.email ||
+            prevUser.isAdmin !== newUser.isAdmin) {
+          return newUser;
+        }
+        return prevUser;
+      });
+
+      // Set loading to false once we have user data
+      setLoading(false);
+    } else if (!userLoading && sessionExists && isSessionChecked) {
+      // Session exists but no user data - might be a new user without profile
+      setUser(prevUser => {
+        if (!prevUser || prevUser.id !== 'unknown') {
+          return {
+            id: 'unknown',
+            email: 'unknown',
+            roles: ['user'],
+            isAdmin: false
+          };
+        }
+        return prevUser;
+      });
+
+      // Set loading to false for unknown users too
+      setLoading(false);
+    }
+  }, [userData, userLoading, sessionExists, isSessionChecked]);
+
+  // Optimized signIn function with faster response
+  const signIn = useCallback(async (email: string, password: string): Promise<boolean> => {
     setLoading(true);
 
     try {
@@ -123,8 +165,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (response.status === 'OK') {
-        // Session created successfully, user data will be fetched by GraphQL
-        await refetchUser();
+        // Session created successfully
+        setSessionExists(true);
+        setIsSessionChecked(true);
+
+        // Don't wait for user data fetch - let it happen in background
+        refetchUser().catch(console.error);
+
+        // Set loading to false immediately for better UX
         setLoading(false);
         return true;
       } else if (response.status === 'WRONG_CREDENTIALS_ERROR') {
@@ -140,67 +188,95 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
       return false;
     }
-  };
+  }, [refetchUser]);
 
-  const signUp = async (email: string, password: string): Promise<boolean> => {
+  // Optimized signUp function with faster response
+  const signUp = useCallback(async (email: string, password: string, acceptTerms: boolean = true): Promise<boolean> => {
     setLoading(true);
 
     try {
-      const response = await EmailPassword.signUp({
-        formFields: [
-          { id: 'email', value: email },
-          { id: 'password', value: password }
-        ]
+      // Use GraphQL mutation to align with backend resolver and capture rate limit + terms errors
+      const SIGN_UP = gql`
+        mutation SignUp($email: String!, $password: String!, $acceptTerms: Boolean!) {
+          signUp(email: $email, password: $password, acceptTerms: $acceptTerms) {
+            ok
+            error
+            user { id email }
+          }
+        }
+      `;
+
+      const result = await client.mutate({
+        mutation: SIGN_UP,
+        variables: { email, password, acceptTerms },
       });
 
-      if (response.status === 'OK') {
-        // Account created successfully, session created
-        await refetchUser();
+      const resp = result.data?.signUp;
+      if (resp?.ok) {
+        setSessionExists(true);
+        setIsSessionChecked(true);
+        refetchUser().catch(console.error);
         setLoading(false);
         return true;
-      } else if (response.status === 'EMAIL_ALREADY_EXISTS_ERROR') {
-        setLoading(false);
-        return false;
-      } else {
-        console.error('Sign up error:', response);
-        setLoading(false);
-        return false;
       }
+
+      // Map error codes to user-friendly states
+      const err = resp?.error as string | undefined;
+      if (err?.startsWith('RATE_LIMIT')) {
+        const retry = Number(err.split(':')[1] || '10');
+        console.warn(`Rate limited. Retry after ${retry}s`);
+      }
+      if (err === 'TERMS_REQUIRED') {
+        console.warn('Terms acceptance required');
+      }
+
+      setLoading(false);
+      return false;
     } catch (error) {
       console.error('Sign up error:', error);
       setLoading(false);
       return false;
     }
-  };
+  }, [refetchUser]);
 
-  const signOut = async (): Promise<void> => {
+  // Memoized signOut function to prevent unnecessary re-renders
+  const signOut = useCallback(async (): Promise<void> => {
     try {
       await Session.signOut();
       setUser(null);
+      setSessionExists(false);
+      setIsSessionChecked(true);
       router.push('/');
     } catch (error) {
       console.error('Sign out error:', error);
     }
-  };
+  }, [router]);
 
-  const refetch = async (): Promise<void> => {
+  // Memoized refetch function to prevent unnecessary re-renders
+  const refetch = useCallback(async (): Promise<void> => {
     try {
       await refetchUser();
     } catch (error) {
       console.error('Refetch error:', error);
     }
-  };
+  }, [refetchUser]);
 
+  // Memoized isAuthenticated check to avoid synchronous Session.doesSessionExist() calls
+  const isAuthenticated = useMemo(() => {
+    return !!user && sessionExists;
+  }, [user, sessionExists]);
+
+  // Memoized context value to prevent unnecessary re-renders
   const value = useMemo<AuthContextType>(() => ({
     user,
-    isAuthenticated: !!user && Session.doesSessionExist(),
+    isAuthenticated,
     hasProfile: !!user && user.id !== 'unknown', // Has profile if user data is complete
     loading: loading || userLoading,
     signIn,
     signUp,
     signOut,
     refetch,
-  }), [user, loading, userLoading]);
+  }), [user, isAuthenticated, loading, userLoading, signIn, signUp, signOut, refetch]);
 
   return (
     <AuthContext.Provider value={value}>

@@ -1,0 +1,12 @@
+# Temporary override to remove custom IPAM subnets that conflict locally.
+# It forces both networks to use the default Docker bridge IPAM (no explicit subnet),
+# avoiding "Pool overlaps" errors.
+
+networks:
+  app-network:
+    driver: bridge
+    ipam: {}
+  loveconnect-network:
+    driver: bridge
+    ipam: {}
+

@@ -1,11 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useQuery, useMutation, gql } from '@apollo/client';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Button } from '@/components/ui/Button';
+import { useQuery, gql } from '@apollo/client';
+import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
+import { Modal } from '@/components/ui/Modal';
+import { AvatarUpload } from '@/components/profile/AvatarUpload';
+import { useTour } from '@/contexts/TourContext';
 
 const GET_MY_PROFILE = gql`
   query GetMyProfile {
@@ -37,28 +39,84 @@ const GET_MY_PREFERENCES = gql`
 `;
 
 export default function ProfilePage() {
+  const { startTour } = useTour();
   const router = useRouter();
   const { user, signOut, isAuthenticated, hasProfile } = useAuth();
   const [activeSection, setActiveSection] = useState<string | null>(null);
 
-  const { data: profileData, loading: profileLoading } = useQuery(GET_MY_PROFILE, {
-    skip: !isAuthenticated || !hasProfile,
+  const { data: profileData, loading: profileLoading, refetch: refetchProfile } = useQuery(GET_MY_PROFILE, {
+    fetchPolicy: 'network-only',
+    nextFetchPolicy: 'cache-first',
   });
 
   const { data: preferencesData, loading: preferencesLoading } = useQuery(GET_MY_PREFERENCES, {
-    skip: !isAuthenticated || !hasProfile,
+    fetchPolicy: 'network-only',
+    nextFetchPolicy: 'cache-first',
   });
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [photos, setPhotos] = useState<string[]>([]);
 
-  // Redirect if not authenticated or no profile
-  if (!isAuthenticated) {
-    router.push('/signin');
-    return null;
+  useEffect(() => {
+    const p = profileData?.myProfile?.photos;
+    if (Array.isArray(p)) setPhotos(p as string[]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileData?.myProfile?.photos]);
+
+  function getApiBase(): string {
+    const full = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080/graphql";
+    try {
+      const u = new URL(full);
+      return full.endsWith('/graphql') ? full.replace(/\/graphql$/, '') : `${u.origin}${u.pathname.replace(/\/$/, '')}`;
+    } catch {
+      return "http://localhost:8080";
+    }
   }
 
-  if (!hasProfile) {
-    router.push('/onboarding');
-    return null;
+  function getFilenameFromUrl(url: string): string {
+    try {
+      const p = new URL(url).pathname;
+      return p.substring(p.lastIndexOf('/') + 1);
+    } catch {
+      const idx = url.lastIndexOf('/');
+      return idx >= 0 ? url.substring(idx + 1) : url;
+    }
   }
+
+  async function handleDeletePhoto(url: string) {
+    const filename = getFilenameFromUrl(url);
+    const prev = photos;
+    setPhotos(prev.filter((p) => p !== url)); // optimistic
+    try {
+      const apiBase = getApiBase();
+      const resp = await fetch(`${apiBase}/api/photos/${encodeURIComponent(filename)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!resp.ok) throw new Error('Delete failed');
+      await refetchProfile?.();
+    } catch (e) {
+      // revert on error
+      setPhotos(prev);
+      console.error('Delete photo error', e);
+    }
+  }
+
+  const onAvatarUploaded = (r: { url: string }) => {
+    setPhotos((p) => [...p, r.url]);
+    refetchProfile?.();
+  };
+
+
+  // If data has finished loading and no profile is present, redirect to signin (RBAC)
+  useEffect(() => {
+    if (!profileLoading && !preferencesLoading && !profileData?.myProfile) {
+      try { router.push('/signin'); } catch {}
+    }
+  }, [profileLoading, preferencesLoading, profileData?.myProfile, router]);
+
+  // Do not redirect immediately on isAuthenticated=false; allow SuperTokens session to hydrate and GraphQL to load profile.
+  // RBAC is validated elsewhere, and the page will show a loading state until data arrives.
+
 
   const handleSignOut = async () => {
     try {
@@ -74,6 +132,15 @@ export default function ProfilePage() {
   if (profileLoading || preferencesLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#667eea] to-[#764ba2] flex items-center justify-center">
+        <motion.button
+          className="ml-3 p-3 rounded-xl glass-card text-white/80 hover:text-white hover:bg-white/15 transition-all"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => startTour()}
+        >
+          <span className="text-sm">Start Tour</span>
+        </motion.button>
+
         <div className="text-center">
           <div className="animate-spin w-8 h-8 border-2 border-white border-t-transparent rounded-full mx-auto mb-4"></div>
           <p className="text-white/80">Loading profile...</p>
@@ -164,7 +231,7 @@ export default function ProfilePage() {
                   className="absolute -bottom-1 -right-1 w-8 h-8 bg-gradient-to-r from-[#ff6b6b] to-[#ff8e53] rounded-full flex items-center justify-center text-white shadow-lg"
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
-                  onClick={() => setActiveSection('photos')}
+                  onClick={() => setShowAvatarModal(true)}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -172,11 +239,11 @@ export default function ProfilePage() {
                 </motion.button>
               </div>
 
-              <h2 className="text-2xl font-bold text-white mb-1">
+              <h2 className="text-2xl font-bold text-white mb-1" data-testid="profile-name">
                 {profile?.name || 'Anonymous'}
               </h2>
               {profile?.age && (
-                <p className="text-white/80 text-lg mb-2">
+                <p className="text-white/80 text-lg mb-2" data-testid="profile-age">
                   {profile.age} years old
                 </p>
               )}
@@ -225,20 +292,34 @@ export default function ProfilePage() {
                 <motion.button
                   className="text-white/70 hover:text-white text-sm underline"
                   whileHover={{ scale: 1.05 }}
-                  onClick={() => setActiveSection('photos')}
+                  onClick={() => setShowAvatarModal(true)}
                 >
                   Edit
                 </motion.button>
               </div>
               <div className="grid grid-cols-3 gap-2">
-                {profile?.photos?.slice(0, 6).map((photo: string, index: number) => (
-                  <div key={index} className="aspect-square rounded-lg overflow-hidden bg-white/10">
+                {photos.slice(0, 6).map((photo: string, index: number) => (
+                  <div key={index} className="relative aspect-square rounded-lg overflow-hidden bg-white/10">
                     <img src={photo} alt={`Photo ${index + 1}`} className="w-full h-full object-cover" />
+                    <button
+                      aria-label="Delete photo"
+                      onClick={() => handleDeletePhoto(photo)}
+                      className="absolute top-1 right-1 bg-black/50 hover:bg-black/70 text-white rounded-md p-1"
+                    >
+                      ✕
+                    </button>
                   </div>
                 ))}
-                {Array.from({ length: Math.max(0, 6 - (profile?.photos?.length || 0)) }).map((_, index) => (
+                <button
+                  onClick={() => setShowAvatarModal(true)}
+                  className="aspect-square rounded-lg bg-white/10 border-2 border-dashed border-white/30 flex items-center justify-center hover:bg-white/15"
+                  aria-label="Add photo"
+                >
+                  <span className="text-white/70 text-2xl">+</span>
+                </button>
+                {Array.from({ length: Math.max(0, 5 - (photos.length || 0)) }).map((_, index) => (
                   <div key={`empty-${index}`} className="aspect-square rounded-lg bg-white/10 border-2 border-dashed border-white/30 flex items-center justify-center">
-                    <span className="text-white/50 text-2xl">+</span>
+                    <span className="text-white/30 text-2xl">+</span>
                   </div>
                 ))}
               </div>
@@ -389,12 +470,19 @@ export default function ProfilePage() {
               <button
                 onClick={handleSignOut}
                 className="w-full glass-card text-white/80 hover:text-white hover:bg-white/15 py-3 px-6 rounded-xl font-medium transition-all duration-200"
+                data-testid="signout"
               >
                 Sign Out
               </button>
             </motion.div>
           </div>
         </div>
+      {showAvatarModal && (
+        <Modal isOpen={true} onClose={() => setShowAvatarModal(false)} title="Upload Avatar">
+          <AvatarUpload onClose={() => setShowAvatarModal(false)} onUploaded={onAvatarUploaded} />
+        </Modal>
+      )}
+
       </div>
     </div>
   );

@@ -1,0 +1,56 @@
+# docker-compose.monitoring.yml
+# Purpose: Dockerized monitoring stack (Grafana + Loki + Promtail) for Windows 11/WSL2
+# Usage: pwsh> docker compose -f docker-compose.monitoring.yml up -d
+
+version: "3.9"
+
+networks:
+  monitoring:
+    driver: bridge
+
+volumes:
+  grafana_data:
+  loki_data:
+
+services:
+  loki:
+    image: grafana/loki:2.9.8
+    container_name: loveconnect-loki
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki_data:/loki
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:2.9.8
+    container_name: loveconnect-promtail
+    command: ["-config.file=/etc/promtail/config.yml"]
+    volumes:
+      # Access Docker events/labels and container logs (WSL2 backend)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./monitoring/promtail-config.yml:/etc/promtail/config.yml:ro
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.4.6
+    container_name: loveconnect-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_DEFAULT_THEME: light
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+    networks:
+      - monitoring
+    restart: unless-stopped
+

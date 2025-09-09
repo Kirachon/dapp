@@ -47,9 +47,14 @@ export async function photoRoutes(fastify: FastifyInstance) {
         },
       },
     },
-  }, async (request: PhotoUploadRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { filename, mimeType } = request.body;
+      const body = request.body as { filename: string; mimeType: string };
+      if (!body?.filename || !body?.mimeType) {
+        reply.code(400).send({ success: false, error: 'filename and mimeType are required' });
+        return;
+      }
+      const { filename, mimeType } = body;
       const userId = (request as any).userId;
 
       const result = await storageService.generatePresignedUploadUrl(
@@ -126,9 +131,10 @@ export async function photoRoutes(fastify: FastifyInstance) {
   // Delete photo endpoint
   fastify.delete('/api/photos/:filename', {
     preHandler: requireAuth,
-  }, async (request: PhotoDeleteRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { filename } = request.params;
+      const params = request.params as { filename: string };
+      const { filename } = params;
       const userId = (request as any).userId;
 
       // Remove from storage

@@ -167,7 +167,7 @@ export class StorageService {
     userId: string,
     filename: string,
     mimeType: string
-  ): Promise<{ uploadUrl: string; filename: string }> {
+  ): Promise<{ uploadUrl: string; url: string; thumbnailUrl: string; filename: string }> {
     if (!ALLOWED_MIME_TYPES.includes(mimeType)) {
       throw new Error(`Unsupported file type: ${mimeType}`);
     }
@@ -175,21 +175,24 @@ export class StorageService {
     const fileId = uuidv4();
     const extension = this.getExtensionFromMimeType(mimeType);
     const objectName = `photos/${userId}/uploads/${fileId}.${extension}`;
+    const thumbnailObjectName = `photos/${userId}/thumbnails/${fileId}.jpg`;
 
     try {
       const uploadUrl = await this.minioClient.presignedPutObject(
         BUCKET_NAME,
         objectName,
-        24 * 60 * 60, // 24 hours
-        {
-          'Content-Type': mimeType,
-          'x-amz-meta-user-id': userId,
-          'x-amz-meta-original-name': filename,
-        }
+        24 * 60 * 60 // 24 hours
       );
+
+      // Generate the final URLs that will be accessible after upload
+      const baseUrl = `http://${MINIO_ENDPOINT}:${MINIO_PORT}/${BUCKET_NAME}`;
+      const url = `${baseUrl}/${objectName}`;
+      const thumbnailUrl = `${baseUrl}/${thumbnailObjectName}`;
 
       return {
         uploadUrl,
+        url,
+        thumbnailUrl,
         filename: `${fileId}.${extension}`,
       };
     } catch (error) {

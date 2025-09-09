@@ -1,0 +1,190 @@
+# docker-compose.staging.yml
+# Purpose: Staging stack for local validation on Windows 11 (Docker Desktop + WSL2)
+# Usage: pwsh> docker compose -f docker-compose.staging.yml up -d
+# Notes: Services are labeled with com.datingapp.env=staging for log routing and dashboards.
+
+
+
+x-labels: &staging-labels
+  labels:
+    com.datingapp.env: "staging"
+
+networks:
+  app-network-staging:
+    driver: bridge
+
+volumes:
+  pgdata_staging:
+  redis_data_staging:
+  minio_data_staging:
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: loveconnect-postgres-staging
+    <<: *staging-labels
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-dating}
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5433:5432"   # host:container
+    volumes:
+      - pgdata_staging:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/10-init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-dating}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network-staging
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: loveconnect-redis-staging
+    <<: *staging-labels
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data_staging:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - app-network-staging
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    container_name: loveconnect-minio-staging
+    <<: *staging-labels
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data_staging:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - app-network-staging
+    restart: unless-stopped
+
+  supertokens:
+    image: registry.supertokens.io/supertokens/supertokens-postgresql:9.2
+    container_name: loveconnect-supertokens-staging
+    <<: *staging-labels
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3567:3567"
+    environment:
+      POSTGRESQL_CONNECTION_URI: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@postgres:5432/${POSTGRES_DB:-dating}
+      API_KEYS: ${SUPERTOKENS_API_KEY:-dev-key}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3567/hello"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - app-network-staging
+    restart: unless-stopped
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: loveconnect-mailhog-staging
+    <<: *staging-labels
+    ports:
+      - "1025:1025" # SMTP
+      - "8025:8025" # Web UI
+    networks:
+      - app-network-staging
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: loveconnect-api-staging
+    <<: *staging-labels
+    env_file:
+      - .env.staging
+    environment:
+      NODE_ENV: staging
+      SUPERTOKENS_CONNECTION_URI: http://supertokens:3567
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio}
+      MINIO_PORT: ${MINIO_PORT:-9000}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      BACKEND_URL: ${BACKEND_URL:-http://localhost:8080}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      TS_NODE_COMPILER_OPTIONS: '{"module":"CommonJS","moduleResolution":"Node"}'
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      supertokens:
+        condition: service_started
+    volumes:
+      - ./src:/app/src
+      - ./prisma:/app/prisma
+      - ./dist:/app/dist
+      - ./tsconfig.json:/app/tsconfig.json:ro
+      - ./tsconfig.api.json:/app/tsconfig.api.json:ro
+      - ./package.json:/app/package.json:ro
+    command: ["sh", "-lc", "npm run build:api && node dist/index.js"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - app-network-staging
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: loveconnect-frontend-staging
+    <<: *staging-labels
+    env_file:
+      - ./frontend/.env.staging
+    environment:
+      NODE_ENV: staging
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    volumes:
+      - ./frontend/src:/app/src:cached
+      - ./frontend/public:/app/public:cached
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - app-network-staging
+    restart: unless-stopped
+

@@ -1,0 +1,29 @@
+# Docker Compose Override for Development
+# This file provides development-specific configurations
+
+version: '3.8'
+
+services:
+
+  # Development database with additional logging
+  postgres:
+    environment:
+      - POSTGRES_LOG_STATEMENT=all
+      - POSTGRES_LOG_MIN_DURATION_STATEMENT=0
+    command: >
+      postgres
+      -c log_statement=all
+      -c log_destination=stderr
+      -c log_min_duration_statement=0
+      -c log_connections=on
+      -c log_disconnections=on
+
+  # Redis with development configuration
+  redis:
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--loglevel", "verbose"]
+
+  # MinIO with development settings
+  minio:
+    environment:
+      - MINIO_BROWSER_REDIRECT_URL=http://localhost:9001
+      - MINIO_SERVER_URL=http://localhost:9000

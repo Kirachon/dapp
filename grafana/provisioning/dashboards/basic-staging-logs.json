@@ -1,0 +1,41 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "type": "logs",
+      "title": "API Logs (env=staging)",
+      "gridPos": {"h": 12, "w": 24, "x": 0, "y": 0},
+      "options": {
+        "dedupStrategy": "none",
+        "showTime": true,
+        "enableLogDetails": true
+      },
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "-100"},
+          "expr": "{env=\"staging\", service=\"api\"}"
+        }
+      ]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["staging"],
+  "templating": {"list": []},
+  "time": {"from": "now-15m", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Staging – Logs Overview",
+  "uid": "staging-logs-basic",
+  "version": 1
+}
+

@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DApp - Dating App Wireframes</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        .header h1 {
+            font-size: 48px;
+            font-weight: bold;
+            color: white;
+            margin-bottom: 16px;
+            text-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 20px;
+            color: rgba(255,255,255,0.9);
+            max-width: 600px;
+            margin: 0 auto;
+            line-height: 1.5;
+        }
+
+        .wireframes-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 40px;
+            margin-bottom: 60px;
+        }
+
+        .wireframe-card {
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            text-align: center;
+        }
+
+        .wireframe-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 30px 60px rgba(0,0,0,0.3);
+        }
+
+        .wireframe-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #007AFF, #FF2D92);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            margin: 0 auto 20px;
+            box-shadow: 0 8px 20px rgba(0, 122, 255, 0.3);
+        }
+
+        .wireframe-card h3 {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 12px;
+            color: #000;
+        }
+
+        .wireframe-card p {
+            font-size: 16px;
+            color: #666;
+            line-height: 1.5;
+            margin-bottom: 24px;
+        }
+
+        .view-button {
+            display: inline-block;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #007AFF, #0056CC);
+            color: white;
+            text-decoration: none;
+            border-radius: 25px;
+            font-weight: 600;
+            font-size: 16px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            box-shadow: 0 4px 16px rgba(0, 122, 255, 0.3);
+        }
+
+        .view-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(0, 122, 255, 0.4);
+        }
+
+        .features {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            margin-bottom: 40px;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .features h2 {
+            font-size: 32px;
+            font-weight: bold;
+            color: white;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        .feature-item {
+            background: rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .feature-item h4 {
+            font-size: 18px;
+            font-weight: 600;
+            color: white;
+            margin-bottom: 8px;
+        }
+
+        .feature-item p {
+            font-size: 14px;
+            color: rgba(255,255,255,0.8);
+            line-height: 1.4;
+        }
+
+        .implementation-note {
+            background: rgba(255, 193, 7, 0.1);
+            border: 1px solid rgba(255, 193, 7, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 40px;
+        }
+
+        .implementation-note h3 {
+            color: #FFB000;
+            margin-bottom: 12px;
+            font-size: 20px;
+        }
+
+        .implementation-note p {
+            color: rgba(255,255,255,0.9);
+            line-height: 1.5;
+        }
+
+        .tech-stack {
+            margin-top: 40px;
+            text-align: center;
+        }
+
+        .tech-stack h3 {
+            color: white;
+            margin-bottom: 16px;
+            font-size: 24px;
+        }
+
+        .tech-tags {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 12px;
+        }
+
+        .tech-tag {
+            background: rgba(255,255,255,0.15);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 500;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 36px;
+            }
+            
+            .header p {
+                font-size: 18px;
+            }
+            
+            .wireframes-grid {
+                grid-template-columns: 1fr;
+                gap: 30px;
+            }
+            
+            .features {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎨 DApp Dating App Wireframes</h1>
+            <p>Interactive wireframe prototypes showcasing the user experience design for a modern dating application with comprehensive features and mobile-first approach.</p>
+        </div>
+
+        <div class="wireframes-grid">
+            <div class="wireframe-card">
+                <div class="wireframe-icon">💖</div>
+                <h3>Discovery Screen</h3>
+                <p>The core swiping interface where users discover potential matches. Features card stack design, profile information, and intuitive action buttons.</p>
+                <a href="discovery-screen.html" class="view-button">View Wireframe</a>
+            </div>
+
+            <div class="wireframe-card">
+                <div class="wireframe-icon">🎉</div>
+                <h3>Match & Chat</h3>
+                <p>Celebration modal for new matches and comprehensive chat interface with conversation starters, real-time messaging, and media sharing.</p>
+                <a href="match-celebration.html" class="view-button">View Wireframe</a>
+            </div>
+
+            <div class="wireframe-card">
+                <div class="wireframe-icon">📝</div>
+                <h3>Onboarding Flow</h3>
+                <p>Complete 5-step onboarding process including photo upload, profile creation, interests selection, and preference settings.</p>
+                <a href="onboarding-flow.html" class="view-button">View Wireframe</a>
+            </div>
+
+            <div class="wireframe-card">
+                <div class="wireframe-icon">👤</div>
+                <h3>Profile View</h3>
+                <p>Detailed profile viewing experience with photo carousel, comprehensive user information, interests, lifestyle details, and social integrations.</p>
+                <a href="profile-view.html" class="view-button">View Wireframe</a>
+            </div>
+        </div>
+
+        <div class="features">
+            <h2>✨ Key Design Features</h2>
+            <div class="features-grid">
+                <div class="feature-item">
+                    <h4>📱 Mobile-First Design</h4>
+                    <p>Optimized for mobile interactions with touch-friendly interfaces, gesture support, and native app feel.</p>
+                </div>
+                <div class="feature-item">
+                    <h4>🎨 Modern UI Patterns</h4>
+                    <p>Contemporary design language with card-based layouts, smooth animations, and intuitive navigation.</p>
+                </div>
+                <div class="feature-item">
+                    <h4>♿ Accessibility Focus</h4>
+                    <p>WCAG 2.1 AA compliance with proper contrast ratios, keyboard navigation, and screen reader support.</p>
+                </div>
+                <div class="feature-item">
+                    <h4>🔒 Privacy by Design</h4>
+                    <p>User control over profile visibility, data sharing, and privacy settings built into every interaction.</p>
+                </div>
+                <div class="feature-item">
+                    <h4>💬 Real-time Messaging</h4>
+                    <p>Live chat with typing indicators, read receipts, media sharing, and conversation starter suggestions.</p>
+                </div>
+                <div class="feature-item">
+                    <h4>🎯 Smart Matching</h4>
+                    <p>Location-based discovery with preference filtering, mutual interest highlighting, and quality over quantity approach.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="implementation-note">
+            <h3>⚠️ Implementation Notes</h3>
+            <p>These wireframes are interactive HTML prototypes designed to demonstrate user experience flows and interface patterns. They integrate with your existing DApp architecture (Fastify + GraphQL backend, Next.js 15 frontend, Socket.IO real-time features) and can be used as reference for frontend development. All animations, interactions, and responsive behaviors are included to showcase the intended user experience.</p>
+        </div>
+
+        <div class="tech-stack">
+            <h3>🛠️ Technology Alignment</h3>
+            <div class="tech-tags">
+                <div class="tech-tag">Next.js 15</div>
+                <div class="tech-tag">React 19</div>
+                <div class="tech-tag">TypeScript</div>
+                <div class="tech-tag">Tailwind CSS</div>
+                <div class="tech-tag">Apollo GraphQL</div>
+                <div class="tech-tag">Socket.IO</div>
+                <div class="tech-tag">Prisma ORM</div>
+                <div class="tech-tag">PostgreSQL</div>
+                <div class="tech-tag">SuperTokens Auth</div>
+                <div class="tech-tag">Mobile-First</div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

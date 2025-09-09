@@ -11,15 +11,21 @@ const appInfo = {
 };
 
 export function initSuperTokens() {
-  const connectionURI = process.env.SUPERTOKENS_CONNECTION_URI || 'http://supertokens:3567';
+  const connectionURI = process.env.SUPERTOKENS_CONNECTION_URI || 'http://localhost:3567';
+  const resolvedApiKey = process.env.SUPERTOKENS_API_KEY || 'supertokens-dev-api-key-12345678901234567890';
+  const masked = resolvedApiKey ? `${resolvedApiKey.slice(0, 4)}...${resolvedApiKey.slice(-4)}` : 'NONE';
   console.log('SuperTokens connection URI:', connectionURI);
-  supertokens.init({
-    framework: 'fastify',
-    debug: true,
-    supertokens: {
-      // Use local SuperTokens core for development
-      connectionURI,
-    },
+  console.log('SuperTokens API key (masked):', masked);
+
+  try {
+    supertokens.init({
+      framework: 'fastify',
+      debug: true,
+      supertokens: {
+        // Use local SuperTokens core for development
+        connectionURI,
+        apiKey: resolvedApiKey,
+      },
     appInfo,
     recipeList: [
       EmailPassword.init({
@@ -55,22 +61,72 @@ export function initSuperTokens() {
             },
           ],
         },
-        resetPasswordUsingTokenFeature: {
-          createAndSendCustomEmail: async (user, passwordResetURLWithToken) => {
-            // In production, integrate with your email service (SendGrid, AWS SES, etc.)
-            console.log(`Password reset email for ${user.email}: ${passwordResetURLWithToken}`);
-          },
-        },
+        override: {
+          apis: (original) => ({
+            ...original,
+            signUpPOST: async (input) => {
+              const resp = await original.signUpPOST!(input);
+              try {
+                if (resp.status === 'OK') {
+                  // Upsert Prisma user on any emailpassword signup (REST or programmatic)
+                  const { PrismaClient } = await import('@prisma/client');
+                  const prisma = new PrismaClient();
+                  try {
+                    await prisma.user.upsert({
+                      where: { id: resp.user.id },
+                      update: { email: resp.user.emails[0] || '' },
+                      create: { id: resp.user.id, email: resp.user.emails[0] || '', passwordHash: '' },
+                    });
+                  } finally {
+                    await prisma.$disconnect();
+                  }
+                }
+              } catch (e) {
+                console.error('Prisma upsert on signUpPOST failed:', e);
+              }
+              return resp;
+            }
+          })
+        }
       }),
       EmailVerification.init({
-        mode: 'OPTIONAL', // Can be 'REQUIRED' for mandatory email verification
+        mode: process.env.NODE_ENV === 'production' ? 'REQUIRED' : 'OPTIONAL',
         emailDelivery: {
           override: (originalImplementation) => {
             return {
               ...originalImplementation,
               sendEmail: async function (input) {
-                // In production, integrate with your email service
-                console.log(`Email verification for ${input.user.email}: ${input.emailVerifyLink}`);
+                try {
+                  const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY || '';
+                  const FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL || 'no-reply@localhost';
+                  const FROM_NAME = process.env.SENDGRID_FROM_NAME || 'LoveConnect';
+                  const verifyLink = input.emailVerifyLink;
+                  if (!SENDGRID_API_KEY) {
+                    console.warn('⚠️ SENDGRID_API_KEY not set; cannot send verification email. Link:', verifyLink);
+                    return;
+                  }
+                  const payload = {
+                    personalizations: [{ to: [{ email: input.user.email }] }],
+                    from: { email: FROM_EMAIL, name: FROM_NAME },
+                    subject: 'Verify your email address',
+                    content: [{ type: 'text/html', value: `<p>Please verify your email by clicking <a href="${verifyLink}">this link</a>.</p>` }],
+                  } as any;
+                  const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': `Bearer ${SENDGRID_API_KEY}`,
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(payload),
+                  });
+                  if (!res.ok) {
+                    console.error('❌ SendGrid send failed', res.status, await res.text());
+                  } else {
+                    console.log('📧 Verification email sent via SendGrid to', input.user.email);
+                  }
+                } catch (e) {
+                  console.error('❌ Error sending verification email', e);
+                }
               },
             };
           },
@@ -78,12 +134,21 @@ export function initSuperTokens() {
       }),
       Session.init({
         cookieSecure: process.env.NODE_ENV === 'production',
-        cookieSameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        // Wider cookie path so GraphQL (/graphql) and REST (/api/*) receive the access token cookie
+        cookiePath: '/',
+        // Use 'none' in development to allow cross-site cookies between http://localhost:3000 and http://localhost:8080
+        cookieSameSite: 'none',
         sessionExpiredStatusCode: 401,
-        antiCsrf: 'VIA_TOKEN',
+        antiCsrf: process.env.NODE_ENV === 'production' ? 'VIA_TOKEN' : 'NONE',
       }),
     ],
   });
+
+  console.log("✅ SuperTokens initialized successfully");
+  } catch (error) {
+    console.error("❌ Failed to initialize SuperTokens:", error);
+    console.log("🔄 Continuing without SuperTokens - auth endpoints will return mock responses");
+  }
 }
 
 export { Session, EmailPassword, EmailVerification };

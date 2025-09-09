@@ -1,0 +1,20 @@
+# tests/load/artillery/health-readiness.yaml
+# Purpose: Baseline health and readiness checks
+config:
+  target: "http://localhost:8080"
+  phases:
+    - duration: 60
+      arrivalRate: 5
+  defaults:
+    headers:
+      Content-Type: application/json
+scenarios:
+  - name: "Health and readiness"
+    flow:
+      - get:
+          url: "/health"
+      - get:
+          url: "/ready"
+      - get:
+          url: "/metrics"
+

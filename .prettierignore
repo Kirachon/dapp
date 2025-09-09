@@ -1,0 +1,21 @@
+# Prettier should skip generated/build artifacts
+node_modules/
+dist/
+build/
+.next/
+frontend/.next/
+coverage/
+playwright-report/
+frontend/playwright-report/
+test-results/
+frontend/test-results/
+
+# Generated code
+src/graphql/__generated__/
+frontend/src/__generated__/
+
+# Misc
+.turbo/
+.esbuild/
+.cache/
+

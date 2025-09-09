@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
+import { useQuery, useMutation } from '@apollo/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { ADMIN_MODERATION, ADMIN_MODERATION_ACTION } from '@/lib/admin-queries';
 
 interface ModerationItem {
   id: string;
@@ -24,65 +26,49 @@ interface ModerationItem {
 export default function AdminModerationPage() {
   const router = useRouter();
   const { isAuthenticated, user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'pending' | 'approved' | 'rejected'>('pending');
-  const [priorityFilter, setPriorityFilter] = useState<'all' | 'low' | 'medium' | 'high' | 'urgent'>('all');
+  const [activeTab, setActiveTab] = useState<'PENDING' | 'APPROVED' | 'REJECTED'>('PENDING');
+  const [priorityFilter, setPriorityFilter] = useState<'all' | 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'>('all');
+  const [currentPage, setCurrentPage] = useState(0);
+  const pageSize = 20;
 
-  // Mock moderation data
-  const [moderationItems] = useState<ModerationItem[]>([
-    {
-      id: '1',
-      type: 'photo',
-      user: { id: '1', name: 'Emma Wilson', email: 'emma@berkeley.edu' },
-      content: 'Profile photo upload',
-      reason: 'Inappropriate content reported',
-      priority: 'high',
-      submittedAt: new Date('2024-08-17T10:30:00'),
-      reportedBy: 'Anonymous',
-      status: 'pending'
+  // GraphQL queries and mutations
+  const { data: moderationData, loading: moderationLoading, error: moderationError, refetch } = useQuery(ADMIN_MODERATION, {
+    variables: {
+      limit: pageSize,
+      offset: currentPage * pageSize,
+      status: activeTab,
+      priority: priorityFilter === 'all' ? null : priorityFilter
     },
-    {
-      id: '2',
-      type: 'profile',
-      user: { id: '2', name: 'Mike Davis', email: 'mike@ucla.edu' },
-      content: 'Bio contains inappropriate language',
-      reason: 'Offensive language',
-      priority: 'medium',
-      submittedAt: new Date('2024-08-17T09:15:00'),
-      reportedBy: 'Sarah Johnson',
-      status: 'pending'
-    },
-    {
-      id: '3',
-      type: 'message',
-      user: { id: '3', name: 'Jessica Chen', email: 'jessica@stanford.edu' },
-      content: 'Harassment in private messages',
-      reason: 'Harassment/Bullying',
-      priority: 'urgent',
-      submittedAt: new Date('2024-08-17T08:45:00'),
-      reportedBy: 'Amanda Davis',
-      status: 'pending'
-    },
-    {
-      id: '4',
-      type: 'photo',
-      user: { id: '4', name: 'Alex Thompson', email: 'alex@berkeley.edu' },
-      content: 'Profile photo approved',
-      reason: 'Manual review completed',
-      priority: 'low',
-      submittedAt: new Date('2024-08-16T16:20:00'),
-      status: 'approved'
-    }
-  ]);
-
-  const filteredItems = moderationItems.filter(item => {
-    const matchesTab = item.status === activeTab;
-    const matchesPriority = priorityFilter === 'all' || item.priority === priorityFilter;
-    return matchesTab && matchesPriority;
+    fetchPolicy: 'cache-and-network',
+    errorPolicy: 'all'
   });
 
-  const handleModerationAction = (itemId: string, action: 'approve' | 'reject') => {
-    console.log(`${action} item ${itemId}`);
-    // In a real app, this would make an API call
+  const [moderationAction] = useMutation(ADMIN_MODERATION_ACTION, {
+    onCompleted: () => refetch(),
+    onError: (error) => console.error('Moderation action error:', error)
+  });
+
+  const moderationItems = moderationData?.adminModeration?.items || [];
+  const totalCount = moderationData?.adminModeration?.totalCount || 0;
+  const hasMore = moderationData?.adminModeration?.hasMore || false;
+
+  // Auto-refresh when filters change
+  useEffect(() => {
+    setCurrentPage(0); // Reset to first page when filters change
+    refetch();
+  }, [activeTab, priorityFilter, refetch]);
+  const handleModerationAction = async (itemId: string, action: 'approve' | 'reject') => {
+    try {
+      await moderationAction({
+        variables: {
+          itemId,
+          action,
+          reason: `Admin ${action} action`
+        }
+      });
+    } catch (error) {
+      console.error(`Failed to ${action} item:`, error);
+    }
   };
 
   const getPriorityColor = (priority: string) => {
@@ -164,7 +150,7 @@ export default function AdminModerationPage() {
           </motion.button>
           <div>
             <h1 className="font-bold text-xl text-white">Content Moderation</h1>
-            <p className="text-white/70 text-sm">{filteredItems.length} items to review</p>
+            <p className="text-white/70 text-sm">{moderationItems.length} items to review</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -188,9 +174,9 @@ export default function AdminModerationPage() {
               {/* Status Tabs */}
               <div className="flex gap-1 bg-white/10 rounded-xl p-1">
                 {[
-                  { key: 'pending', label: 'Pending', count: moderationItems.filter(i => i.status === 'pending').length },
-                  { key: 'approved', label: 'Approved', count: moderationItems.filter(i => i.status === 'approved').length },
-                  { key: 'rejected', label: 'Rejected', count: moderationItems.filter(i => i.status === 'rejected').length }
+                  { key: 'pending', label: 'Pending', count: moderationItems.filter((i: ModerationItem) => i.status === 'pending').length },
+                  { key: 'approved', label: 'Approved', count: moderationItems.filter((i: ModerationItem) => i.status === 'approved').length },
+                  { key: 'rejected', label: 'Rejected', count: moderationItems.filter((i: ModerationItem) => i.status === 'rejected').length }
                 ].map((tab) => (
                   <button
                     key={tab.key}
@@ -236,23 +222,19 @@ export default function AdminModerationPage() {
       {/* Moderation Queue */}
       <div className="flex-1 px-4 pb-8 relative z-10 overflow-y-auto">
         <div className="max-w-6xl mx-auto">
-          {filteredItems.length === 0 ? (
-            <motion.div 
+          {(moderationItems.length === 0) ? (
+            <motion.div
               className="text-center py-12"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
             >
               <div className="text-6xl mb-4">✅</div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                No items to review
-              </h3>
-              <p className="text-white/80">
-                All {activeTab} items have been processed.
-              </p>
+              <h3 className="text-lg font-semibold text-white mb-2">No items to review</h3>
+              <p className="text-white/80">All {activeTab} items have been processed.</p>
             </motion.div>
           ) : (
             <div className="space-y-4">
-              {filteredItems.map((item, index) => (
+              {moderationItems.map((item: ModerationItem, index: number) => (
                 <motion.div
                   key={item.id}
                   className="glass-card-light p-6 rounded-2xl backdrop-blur-lg border border-white/30"
