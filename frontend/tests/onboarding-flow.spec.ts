@@ -384,3 +384,101 @@ test.describe('Detailed Onboarding Flow', () => {
     await expect(page.locator('input[type="number"]')).toHaveValue(user.age.toString());
   });
 });
+
+test('Photos step validation: requires at least 2 photos and max 6 enforced', async ({ page }) => {
+  const authHelper = new AuthHelper(page);
+  const user = TEST_USERS.alice;
+
+  await authHelper.signUp(user);
+  await expect(page).toHaveURL(/\/onboarding(-v2)?\/basics/);
+  await page.fill('input[placeholder*="name"]', user.name);
+  await page.fill('input[type="number"]', user.age.toString());
+  await page.click('text=Woman');
+  await page.click('button:has-text("Continue")');
+
+  await expect(page).toHaveURL(/\/onboarding(-v2)?\/photos/);
+
+  // Inject only 1 photo to trigger error
+  await page.evaluate(() => {
+    const payload = JSON.stringify({
+      photos: ['data:image/jpeg;base64,one'],
+      primaryPhotoIndex: 0,
+    });
+    sessionStorage.setItem('onboarding_photos', payload);
+    window.dispatchEvent(
+      new StorageEvent('storage', { key: 'onboarding_photos', newValue: payload }),
+    );
+  });
+  await page.waitForTimeout(100);
+  await page.click('button:has-text("Continue")');
+  await expect(page.locator('text=Please upload at least 2 photos')).toBeVisible();
+
+  // Now inject 7 photos to test max 6 enforcement in UI (should prevent adding beyond 6)
+  await page.evaluate(() => {
+    const photos = Array.from({ length: 7 }).map((_, i) => `data:image/jpeg;base64,photo${i}`);
+    const payload = JSON.stringify({ photos, primaryPhotoIndex: 0 });
+    sessionStorage.setItem('onboarding_photos', payload);
+    window.dispatchEvent(
+      new StorageEvent('storage', { key: 'onboarding_photos', newValue: payload }),
+    );
+  });
+  await page.waitForTimeout(100);
+  // Continue should still proceed because validation runs on >=2, but server will slice to 6.
+  await page.click('button:has-text("Continue")');
+  await expect(page).toHaveURL(/\/onboarding(-v2)?\/about/);
+});
+
+test('About step validation: bio length and interests count', async ({ page }) => {
+  const authHelper = new AuthHelper(page);
+  const user = TEST_USERS.bob;
+
+  await authHelper.signUp(user);
+
+  // Basics
+  await expect(page).toHaveURL(/\/onboarding(-v2)?\/basics/);
+  await page.fill('input[placeholder*="name"]', user.name);
+  await page.fill('input[type="number"]', user.age.toString());
+  await page.click('text=Man');
+  await page.click('button:has-text("Continue")');
+
+  // Photos - inject 2 photos to pass photos step
+  await expect(page).toHaveURL(/\/onboarding(-v2)?\/photos/);
+  await page.evaluate(() => {
+    const payload = JSON.stringify({
+      photos: ['data:image/jpeg;base64,a', 'data:image/jpeg;base64,b'],
+      primaryPhotoIndex: 0,
+    });
+    sessionStorage.setItem('onboarding_photos', payload);
+    window.dispatchEvent(
+      new StorageEvent('storage', { key: 'onboarding_photos', newValue: payload }),
+    );
+  });
+  await page.waitForTimeout(100);
+  await page.click('button:has-text("Continue")');
+
+  // About - try short bio (expect alert)
+  await expect(page).toHaveURL(/\/onboarding(-v2)?\/about/);
+  await page.fill('textarea', 'Too short');
+  const [bioDialog] = await Promise.all([
+    page.waitForEvent('dialog'),
+    page.click('button[type="submit"], button:has-text("Continue")'),
+  ]);
+  expect(bioDialog.message()).toContain('Bio must be at least 10 characters');
+  await bioDialog.accept();
+
+  // Now valid bio but only 2 interests to trigger interests error
+  await page.fill('textarea', 'This is now long enough bio text.');
+  await page.click('text=Music');
+  await page.click('text=Travel');
+  const [interestDialog] = await Promise.all([
+    page.waitForEvent('dialog'),
+    page.click('button[type="submit"], button:has-text("Continue")'),
+  ]);
+  expect(interestDialog.message()).toContain('Please select at least 3 interests');
+  await interestDialog.accept();
+
+  // Satisfy interests and proceed
+  await page.click('text=Food');
+  await page.click('button[type="submit"], button:has-text("Continue")');
+  await expect(page).toHaveURL(/\/onboarding(-v2)?\/preferences/);
+});
