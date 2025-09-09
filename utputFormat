@@ -1,0 +1,24 @@
+HTTP/1.1 400 Bad Request
+Content-Security-Policy: default-src 'self';object-src 'none';frame-src 'none';base-uri 'self';form-action 'self';style-src 'self' 'unsafe-inline';script-src 'self' 'unsafe-eval' 'unsafe-inline';img-src 'self' data: https: http:;connect-src 'self' wss: ws: http: https:;font-src 'self' data: https:;media-src 'self';worker-src 'self' blob:;frame-ancestors 'self';script-src-attr 'none';upgrade-insecure-requests
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Resource-Policy: same-origin
+Origin-Agent-Cluster: ?1
+Referrer-Policy: no-referrer
+Strict-Transport-Security: max-age=31536000; includeSubDomains
+X-Content-Type-Options: nosniff
+X-DNS-Prefetch-Control: off
+X-Download-Options: noopen
+X-Frame-Options: SAMEORIGIN
+X-Permitted-Cross-Domain-Policies: none
+X-XSS-Protection: 0
+vary: Origin
+access-control-allow-credentials: true
+x-ratelimit-limit: 100
+x-ratelimit-remaining: 98
+x-ratelimit-reset: 38
+connection: close
+content-type: application/json; charset=utf-8
+content-length: 160
+Date: Thu, 21 Aug 2025 09:47:33 GMT
+
+{"statusCode":400,"code":"FST_ERR_CTP_INVALID_JSON_BODY","error":"Bad Request","message":"Body is not valid JSON but content-type is set to 'application/json'"}

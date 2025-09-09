@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
-import { useQuery, useMutation, useSubscription, gql } from '@apollo/client';
+import { useQuery, useMutation, gql } from '@apollo/client';
 import { io, Socket } from 'socket.io-client';
 
 // GraphQL Queries and Mutations
@@ -59,41 +59,7 @@ const MARK_CONVERSATION_READ_MUTATION = gql`
   }
 `;
 
-// GraphQL Subscriptions
-const MESSAGE_ADDED_SUBSCRIPTION = gql`
-  subscription MessageAdded($conversationId: ID!) {
-    messageAdded(conversationId: $conversationId) {
-      id
-      content
-      senderId
-      type
-      mediaUrls
-      createdAt
-      readAt
-    }
-  }
-`;
-
-const MESSAGE_READ_SUBSCRIPTION = gql`
-  subscription MessageRead($conversationId: ID!) {
-    messageRead(conversationId: $conversationId) {
-      conversationId
-      messageId
-      readBy
-      readAt
-    }
-  }
-`;
-
-const USER_TYPING_SUBSCRIPTION = gql`
-  subscription UserTyping($conversationId: ID!) {
-    userTyping(conversationId: $conversationId) {
-      conversationId
-      userId
-      isTyping
-    }
-  }
-`;
+// Real-time functionality handled exclusively by Socket.IO
 
 interface Message {
   id: string;
@@ -122,6 +88,19 @@ interface SocketMessage {
   mediaUrls: string[];
   createdAt: string;
   readAt?: string;
+}
+
+
+function normalizeMessage(m: any): Message {
+  return {
+    id: String(m.id),
+    senderId: String(m.senderId ?? ''),
+    content: String(m.content ?? ''),
+    type: (m.type as 'TEXT' | 'IMAGE' | 'VIDEO') ?? 'TEXT',
+    createdAt: m.createdAt ?? new Date().toISOString(),
+    readAt: m.readAt ?? undefined,
+    mediaUrls: Array.isArray(m.mediaUrls) ? m.mediaUrls : [],
+  };
 }
 
 export default function ChatPage() {
@@ -161,32 +140,107 @@ export default function ChatPage() {
   const [sendMessageMutation] = useMutation(SEND_MESSAGE_MUTATION);
   const [markConversationReadMutation] = useMutation(MARK_CONVERSATION_READ_MUTATION);
 
-  // GraphQL Subscriptions
-  const { data: newMessageData } = useSubscription(MESSAGE_ADDED_SUBSCRIPTION, {
-    variables: { conversationId },
-    skip: !conversationId || !isAuthenticated,
-  });
+  // Real-time functionality handled exclusively by Socket.IO below
 
-  const { data: messageReadData } = useSubscription(MESSAGE_READ_SUBSCRIPTION, {
-    variables: { conversationId },
-    skip: !conversationId || !isAuthenticated,
-  });
-
-  const { data: typingData } = useSubscription(USER_TYPING_SUBSCRIPTION, {
-    variables: { conversationId },
-    skip: !conversationId || !isAuthenticated,
-  });
-
-  // Set connection status based on GraphQL subscriptions
+  // Initialize Socket.IO connection
   useEffect(() => {
-    // For now, assume connected if authenticated
-    setIsConnected(isAuthenticated);
-  }, [isAuthenticated]);
+    if (!isAuthenticated || !conversationId) return;
+
+    console.log('🔌 Initializing Socket.IO connection...');
+
+    // Create Socket.IO connection
+    const newSocket = io('http://localhost:8080', {
+      transports: ['websocket', 'polling'],
+      withCredentials: true,
+    });
+
+    newSocket.on('connect', () => {
+      console.log('✅ Socket.IO connected');
+      setIsConnected(true);
+
+      // Join the conversation room
+      newSocket.emit('join-conversation', { conversationId });
+    });
+
+    newSocket.on('disconnect', () => {
+      console.log('❌ Socket.IO disconnected');
+      setIsConnected(false);
+    });
+
+    newSocket.on('new_message', (message: SocketMessage) => {
+      console.log('📨 Received message via Socket.IO:', message);
+
+      // Add message to local state if it's for this conversation
+      if (message.conversationId === conversationId) {
+        setMessages(prev => {
+          const exists = prev.find(msg => msg.id === message.id);
+          if (exists) return prev;
+
+          const next = [...prev, normalizeMessage(message)];
+          return next.sort((a, b) =>
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          );
+        });
+      }
+    });
+
+    newSocket.on('user_typing', (data: { userId: string; isTyping: boolean }) => {
+      console.log('⌨️ Typing event via Socket.IO:', data);
+      if (data.userId !== user?.id) {
+        setOtherUserTyping(data.isTyping);
+
+        if (data.isTyping) {
+          setTimeout(() => setOtherUserTyping(false), 3000);
+        }
+      }
+    });
+
+    newSocket.on('user_presence_changed', (data: { userId: string; isOnline: boolean; lastSeen: Date }) => {
+      console.log('👤 Presence update via Socket.IO:', data);
+      if (data.userId === chatUser?.id) {
+        setChatUser(prev => prev ? {
+          ...prev,
+          isOnline: data.isOnline,
+          lastSeen: new Date(data.lastSeen)
+        } : null);
+      }
+    });
+
+    // Handle Socket.IO errors
+    newSocket.on('error', (error: { message: string }) => {
+      console.error('❌ Socket.IO error:', error);
+      // Could show a toast notification to the user
+    });
+
+    // Handle message send confirmation
+    newSocket.on('message_sent', (data: { messageId: string; conversationId: string }) => {
+      console.log('✅ Message send confirmed:', data);
+    });
+
+    // Handle message send errors
+    newSocket.on('message_error', (error: { message: string; conversationId: string }) => {
+      console.error('❌ Message send error:', error);
+      // Could show error feedback to user
+    });
+
+    setSocket(newSocket);
+
+    // Cleanup on unmount
+    return () => {
+      console.log('🔌 Cleaning up Socket.IO connection...');
+      newSocket.disconnect();
+    };
+  }, [isAuthenticated, conversationId, user?.id]);
+
+  // Set connection status based on Socket.IO connection
+  useEffect(() => {
+    setIsConnected(isAuthenticated && socket?.connected === true);
+  }, [isAuthenticated, socket?.connected]);
 
   // Load messages from GraphQL
   useEffect(() => {
     if (messagesData?.messages) {
-      setMessages(messagesData.messages);
+      setMessages((messagesData.messages as any[]).map(normalizeMessage));
     }
   }, [messagesData]);
 
@@ -204,55 +258,7 @@ export default function ChatPage() {
     }
   }, [conversationData]);
 
-  // Handle new messages from GraphQL subscription
-  useEffect(() => {
-    if (newMessageData?.messageAdded) {
-      const newMessage = newMessageData.messageAdded;
-      console.log('📨 New message received via GraphQL:', newMessage);
-
-      setMessages(prev => {
-        const exists = prev.find(msg => msg.id === newMessage.id);
-        if (exists) return prev;
-
-        return [...prev, newMessage].sort((a, b) =>
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-        );
-      });
-    }
-  }, [newMessageData]);
-
-  // Handle message read events
-  useEffect(() => {
-    if (messageReadData?.messageRead) {
-      const readEvent = messageReadData.messageRead;
-      console.log('✅ Message read event:', readEvent);
-
-      if (readEvent.readBy !== user?.id) {
-        setMessages(prev => prev.map(msg =>
-          msg.senderId === user?.id && !msg.readAt
-            ? { ...msg, readAt: readEvent.readAt }
-            : msg
-        ));
-      }
-    }
-  }, [messageReadData, user?.id]);
-
-  // Handle typing indicators
-  useEffect(() => {
-    if (typingData?.userTyping) {
-      const typing = typingData.userTyping;
-      console.log('⌨️ Typing event:', typing);
-
-      if (typing.userId !== user?.id) {
-        setOtherUserTyping(typing.isTyping);
-
-        // Clear typing indicator after 3 seconds
-        if (typing.isTyping) {
-          setTimeout(() => setOtherUserTyping(false), 3000);
-        }
-      }
-    }
-  }, [typingData, user?.id]);
+  // Real-time message handling is done exclusively via Socket.IO events below
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -269,24 +275,52 @@ export default function ChatPage() {
     setNewMessage('');
 
     try {
-      // Send via GraphQL mutation (which will trigger the subscription)
-      await sendMessageMutation({
-        variables: {
+      // Primary method: Socket.IO for real-time delivery and persistence
+      if (socket && socket.connected) {
+        socket.emit('send_message', {
           conversationId,
           content: messageContent,
-          mediaUrls: [],
-        },
-      });
-
-      console.log('✅ Message sent successfully');
+          type: 'TEXT'
+        });
+        console.log('✅ Message sent via Socket.IO');
+      } else {
+        // Fallback: GraphQL mutation when Socket.IO is not available
+        console.log('⚠️ Socket.IO not connected, falling back to GraphQL');
+        await sendMessageMutation({
+          variables: {
+            conversationId,
+            content: messageContent,
+            mediaUrls: [],
+          },
+        });
+        console.log('✅ Message sent via GraphQL fallback');
+      }
     } catch (error) {
       console.error('❌ Failed to send message:', error);
       // Re-add message to input on failure
       setNewMessage(messageContent);
-    }
-  }, [newMessage, conversationId, sendMessageMutation]);
 
-  // Handle typing indicators (simplified for now)
+      // If Socket.IO failed, try GraphQL as fallback
+      if (socket && socket.connected) {
+        try {
+          console.log('🔄 Retrying with GraphQL fallback...');
+          await sendMessageMutation({
+            variables: {
+              conversationId,
+              content: messageContent,
+              mediaUrls: [],
+            },
+          });
+          console.log('✅ Message sent via GraphQL fallback');
+          setNewMessage(''); // Clear input again on successful fallback
+        } catch (fallbackError) {
+          console.error('❌ GraphQL fallback also failed:', fallbackError);
+        }
+      }
+    }
+  }, [newMessage, conversationId, sendMessageMutation, socket]);
+
+  // Handle typing indicators with Socket.IO
   const handleInputChange = useCallback((value: string) => {
     setNewMessage(value);
 
@@ -299,15 +333,31 @@ export default function ChatPage() {
     const isTypingNow = value.length > 0;
     if (isTypingNow !== isTyping) {
       setIsTyping(isTypingNow);
+
+      // Emit typing event via Socket.IO
+      if (socket && socket.connected) {
+        socket.emit('typing', {
+          conversationId,
+          isTyping: isTypingNow
+        });
+      }
     }
 
     // Set timeout to stop typing indicator
     if (isTypingNow) {
       typingTimeoutRef.current = setTimeout(() => {
         setIsTyping(false);
+
+        // Emit typing stop event via Socket.IO
+        if (socket && socket.connected) {
+          socket.emit('typing', {
+            conversationId,
+            isTyping: false
+          });
+        }
       }, 1000);
     }
-  }, [isTyping]);
+  }, [isTyping, socket, conversationId]);
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -400,7 +450,7 @@ export default function ChatPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          
+
           {chatUser && (
             <div className="flex items-center gap-3">
               <div className="relative">
@@ -434,7 +484,7 @@ export default function ChatPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <motion.button 
+          <motion.button
             className="p-3 rounded-xl glass-card text-white/80 hover:text-white hover:bg-white/15 transition-all"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
@@ -443,7 +493,7 @@ export default function ChatPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
             </svg>
           </motion.button>
-          <motion.button 
+          <motion.button
             className="p-3 rounded-xl glass-card text-white/80 hover:text-white hover:bg-white/15 transition-all"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
@@ -462,7 +512,7 @@ export default function ChatPage() {
             {messages.map((message, index) => {
               const isMe = message.senderId === user?.id || message.senderId === 'me';
               const showAvatar = index === 0 || messages[index - 1].senderId !== message.senderId;
-              
+
               return (
                 <motion.div
                   key={message.id}
@@ -479,7 +529,7 @@ export default function ChatPage() {
                     </div>
                   )}
                   {!isMe && !showAvatar && <div className="w-8"></div>}
-                  
+
                   <div className={`max-w-[75%] ${isMe ? 'order-1' : ''}`}>
                     <div
                       className={`message-bubble px-4 py-3 rounded-2xl backdrop-blur-md border ${
@@ -573,7 +623,7 @@ export default function ChatPage() {
               >
                 <span className="text-xl">😊</span>
               </button>
-              
+
               <div className="flex-1">
                 <input
                   ref={inputRef}

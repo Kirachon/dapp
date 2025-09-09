@@ -3,100 +3,114 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
+import { useQuery, useMutation } from '@apollo/client';
 import { useAuth } from '@/contexts/AuthContext';
+import {
+  ADMIN_USERS,
+  ADMIN_BAN_USER,
+  ADMIN_UNBAN_USER,
+  ADMIN_VERIFY_USER,
+  ADMIN_DELETE_USER
+} from '@/lib/admin-queries';
 
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  age: number;
-  university: string;
-  status: 'active' | 'banned' | 'pending';
-  joinedAt: Date;
-  lastActive: Date;
-  reportCount: number;
-  verified: boolean;
-}
 
 export default function AdminUsersPage() {
   const router = useRouter();
   const { isAuthenticated, user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'banned' | 'pending'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'ACTIVE' | 'BANNED' | 'PENDING'>('all');
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [currentPage, setCurrentPage] = useState(0);
+  const pageSize = 20;
 
-  // Mock user data
-  const [users] = useState<User[]>([
-    {
-      id: '1',
-      name: 'Emma Wilson',
-      email: 'emma.wilson@berkeley.edu',
-      age: 24,
-      university: 'UC Berkeley',
-      status: 'active',
-      joinedAt: new Date('2024-01-15'),
-      lastActive: new Date('2024-08-17'),
-      reportCount: 0,
-      verified: true
+  // GraphQL queries and mutations
+  const { data: usersData, loading: usersLoading, error: usersError, refetch } = useQuery(ADMIN_USERS, {
+    variables: {
+      limit: pageSize,
+      offset: currentPage * pageSize,
+      status: statusFilter === 'all' ? null : statusFilter,
+      search: searchQuery || null
     },
-    {
-      id: '2',
-      name: 'Sarah Johnson',
-      email: 'sarah.j@stanford.edu',
-      age: 26,
-      university: 'Stanford University',
-      status: 'active',
-      joinedAt: new Date('2024-02-20'),
-      lastActive: new Date('2024-08-16'),
-      reportCount: 1,
-      verified: true
-    },
-    {
-      id: '3',
-      name: 'Mike Davis',
-      email: 'mike.davis@ucla.edu',
-      age: 23,
-      university: 'UCLA',
-      status: 'pending',
-      joinedAt: new Date('2024-08-15'),
-      lastActive: new Date('2024-08-15'),
-      reportCount: 0,
-      verified: false
-    },
-    {
-      id: '4',
-      name: 'Jessica Chen',
-      email: 'j.chen@berkeley.edu',
-      age: 25,
-      university: 'UC Berkeley',
-      status: 'banned',
-      joinedAt: new Date('2024-03-10'),
-      lastActive: new Date('2024-08-10'),
-      reportCount: 5,
-      verified: true
-    }
-  ]);
-
-  const filteredUsers = users.filter(user => {
-    const matchesSearch = user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         user.email.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    fetchPolicy: 'cache-and-network',
+    errorPolicy: 'all'
   });
 
-  const handleUserAction = (userId: string, action: 'ban' | 'unban' | 'verify' | 'delete') => {
-    console.log(`Action ${action} for user ${userId}`);
-    // In a real app, this would make an API call
+  const [banUser] = useMutation(ADMIN_BAN_USER, {
+    onCompleted: () => refetch(),
+    onError: (error) => console.error('Ban user error:', error)
+  });
+
+  const [unbanUser] = useMutation(ADMIN_UNBAN_USER, {
+    onCompleted: () => refetch(),
+    onError: (error) => console.error('Unban user error:', error)
+  });
+
+  const [verifyUser] = useMutation(ADMIN_VERIFY_USER, {
+    onCompleted: () => refetch(),
+    onError: (error) => console.error('Verify user error:', error)
+  });
+
+  const [deleteUser] = useMutation(ADMIN_DELETE_USER, {
+    onCompleted: () => refetch(),
+    onError: (error) => console.error('Delete user error:', error)
+  });
+
+  const users = usersData?.adminUsers?.users || [];
+  const totalCount = usersData?.adminUsers?.totalCount || 0;
+  const hasMore = usersData?.adminUsers?.hasMore || false;
+
+  // Search and filtering is now handled by GraphQL query
+  // Debounce search to avoid too many API calls
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setCurrentPage(0); // Reset to first page when search changes
+      refetch();
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, statusFilter, refetch]);
+
+  const handleUserAction = async (userId: string, action: 'ban' | 'unban' | 'verify' | 'delete') => {
+    try {
+      switch (action) {
+        case 'ban':
+          await banUser({ variables: { userId, reason: 'Admin action' } });
+          break;
+        case 'unban':
+          await unbanUser({ variables: { userId } });
+          break;
+        case 'verify':
+          await verifyUser({ variables: { userId } });
+          break;
+        case 'delete':
+          if (confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+            await deleteUser({ variables: { userId } });
+          }
+          break;
+      }
+    } catch (error) {
+      console.error(`Failed to ${action} user:`, error);
+    }
   };
 
-  const handleBulkAction = (action: 'ban' | 'unban' | 'delete') => {
-    console.log(`Bulk action ${action} for users:`, selectedUsers);
-    setSelectedUsers([]);
+  const handleBulkAction = async (action: 'ban' | 'unban' | 'delete') => {
+    if (selectedUsers.length === 0) return;
+
+    if (confirm(`Are you sure you want to ${action} ${selectedUsers.length} users?`)) {
+      try {
+        for (const userId of selectedUsers) {
+          await handleUserAction(userId, action);
+        }
+        setSelectedUsers([]);
+      } catch (error) {
+        console.error(`Bulk ${action} failed:`, error);
+      }
+    }
   };
 
   const toggleUserSelection = (userId: string) => {
-    setSelectedUsers(prev => 
-      prev.includes(userId) 
+    setSelectedUsers(prev =>
+      prev.includes(userId)
         ? prev.filter(id => id !== userId)
         : [...prev, userId]
     );
@@ -169,11 +183,11 @@ export default function AdminUsersPage() {
           </motion.button>
           <div>
             <h1 className="font-bold text-xl text-white">User Management</h1>
-            <p className="text-white/70 text-sm">{filteredUsers.length} users found</p>
+            <p className="text-white/70 text-sm">{totalCount} users found</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <motion.button 
+          <motion.button
             className="p-3 rounded-xl glass-card text-white/80 hover:text-white hover:bg-white/15 transition-all"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
@@ -205,7 +219,7 @@ export default function AdminUsersPage() {
                   />
                 </div>
               </div>
-              
+
               {/* Status Filter */}
               <div className="flex gap-2">
                 {[
@@ -231,7 +245,7 @@ export default function AdminUsersPage() {
 
             {/* Bulk Actions */}
             {selectedUsers.length > 0 && (
-              <motion.div 
+              <motion.div
                 className="mt-4 pt-4 border-t border-white/20"
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
@@ -278,10 +292,10 @@ export default function AdminUsersPage() {
                     <th className="p-4 text-left">
                       <input
                         type="checkbox"
-                        checked={selectedUsers.length === filteredUsers.length && filteredUsers.length > 0}
+                        checked={selectedUsers.length === users.length && users.length > 0}
                         onChange={(e) => {
                           if (e.target.checked) {
-                            setSelectedUsers(filteredUsers.map(u => u.id));
+                            setSelectedUsers(users.map((u: any) => u.id));
                           } else {
                             setSelectedUsers([]);
                           }
@@ -298,7 +312,51 @@ export default function AdminUsersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredUsers.map((user, index) => (
+                  {usersLoading ? (
+                    // Loading skeleton
+                    Array.from({ length: 5 }).map((_, index) => (
+                      <tr key={index} className="border-t border-white/10">
+                        <td className="p-4">
+                          <div className="w-4 h-4 bg-white/20 rounded animate-pulse"></div>
+                        </td>
+                        <td className="p-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-white/20 rounded-full animate-pulse"></div>
+                            <div>
+                              <div className="w-24 h-4 bg-white/20 rounded animate-pulse mb-1"></div>
+                              <div className="w-32 h-3 bg-white/20 rounded animate-pulse"></div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <div className="w-20 h-4 bg-white/20 rounded animate-pulse"></div>
+                        </td>
+                        <td className="p-4">
+                          <div className="w-16 h-6 bg-white/20 rounded animate-pulse"></div>
+                        </td>
+                        <td className="p-4">
+                          <div className="w-20 h-4 bg-white/20 rounded animate-pulse"></div>
+                        </td>
+                        <td className="p-4">
+                          <div className="w-8 h-4 bg-white/20 rounded animate-pulse"></div>
+                        </td>
+                        <td className="p-4">
+                          <div className="flex gap-1">
+                            <div className="w-8 h-8 bg-white/20 rounded animate-pulse"></div>
+                            <div className="w-8 h-8 bg-white/20 rounded animate-pulse"></div>
+                            <div className="w-8 h-8 bg-white/20 rounded animate-pulse"></div>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : users.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="p-8 text-center text-white/60">
+                        {usersError ? 'Error loading users' : 'No users found'}
+                      </td>
+                    </tr>
+                  ) : (
+                    users.map((user: any, index: number) => (
                     <motion.tr
                       key={user.id}
                       className="border-t border-white/10 hover:bg-white/5 transition-colors"
@@ -318,26 +376,28 @@ export default function AdminUsersPage() {
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 bg-gradient-to-br from-purple-400 to-pink-400 rounded-full flex items-center justify-center">
                             <span className="text-white font-bold text-sm">
-                              {user.name.charAt(0)}
+                              {user.profile?.name?.charAt(0) || user.email.charAt(0).toUpperCase()}
                             </span>
                           </div>
                           <div>
-                            <div className="text-white font-medium">{user.name}</div>
+                            <div className="text-white font-medium">{user.profile?.name || 'No name'}</div>
                             <div className="text-white/60 text-sm">{user.email}</div>
-                            <div className="text-white/60 text-xs">Age: {user.age}</div>
+                            {user.profile?.age && (
+                              <div className="text-white/60 text-xs">Age: {user.profile.age}</div>
+                            )}
                           </div>
                           {user.verified && (
                             <div className="text-blue-400">✓</div>
                           )}
                         </div>
                       </td>
-                      <td className="p-4 text-white/80">{user.university}</td>
+                      <td className="p-4 text-white/80">{user.profile?.education || 'Not specified'}</td>
                       <td className="p-4">
                         <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getStatusBadge(user.status)}`}>
-                          {user.status.charAt(0).toUpperCase() + user.status.slice(1)}
+                          {user.status.charAt(0).toUpperCase() + user.status.slice(1).toLowerCase()}
                         </span>
                       </td>
-                      <td className="p-4 text-white/80 text-sm">{formatDate(user.joinedAt)}</td>
+                      <td className="p-4 text-white/80 text-sm">{formatDate(new Date(user.createdAt))}</td>
                       <td className="p-4">
                         <span className={`text-sm ${user.reportCount > 0 ? 'text-red-400' : 'text-white/60'}`}>
                           {user.reportCount}
@@ -346,9 +406,9 @@ export default function AdminUsersPage() {
                       <td className="p-4">
                         <div className="flex gap-1">
                           <button
-                            onClick={() => handleUserAction(user.id, user.status === 'banned' ? 'unban' : 'ban')}
+                            onClick={() => handleUserAction(user.id, user.status === 'BANNED' ? 'unban' : 'ban')}
                             className={`p-2 rounded-lg text-xs transition-all ${
-                              user.status === 'banned'
+                              user.status === 'BANNED'
                                 ? 'bg-green-500/20 text-green-200 hover:bg-green-500/30'
                                 : 'bg-red-500/20 text-red-200 hover:bg-red-500/30'
                             }`}
@@ -370,10 +430,39 @@ export default function AdminUsersPage() {
                         </div>
                       </td>
                     </motion.tr>
-                  ))}
+                  ))) }
+
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination */}
+            {!usersLoading && users.length > 0 && (
+              <div className="flex items-center justify-between mt-6 px-6 py-4 bg-white/5 rounded-xl">
+                <div className="text-white/60 text-sm">
+                  Showing {currentPage * pageSize + 1} to {Math.min((currentPage + 1) * pageSize, totalCount)} of {totalCount} users
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(0, prev - 1))}
+                    disabled={currentPage === 0}
+                    className="px-3 py-1 rounded-lg bg-white/10 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white/20 transition-colors"
+                  >
+                    Previous
+                  </button>
+                  <span className="px-3 py-1 text-white/80">
+                    Page {currentPage + 1}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(prev => prev + 1)}
+                    disabled={!hasMore}
+                    className="px-3 py-1 rounded-lg bg-white/10 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white/20 transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

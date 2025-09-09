@@ -1,0 +1,137 @@
+import type { Config } from 'tailwindcss'
+
+const config: Config = {
+  content: [
+    './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/components/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/app/**/*.{js,ts,jsx,tsx,mdx}',
+  ],
+  theme: {
+    extend: {
+      colors: {
+        primary: {
+          50: 'var(--color-primary-50)',
+          100: 'var(--color-primary-100)',
+          200: 'var(--color-primary-200)',
+          300: 'var(--color-primary-300)',
+          400: 'var(--color-primary-400)',
+          500: 'var(--color-primary-500)',
+          600: 'var(--color-primary-600)',
+          700: 'var(--color-primary-700)',
+          800: 'var(--color-primary-800)',
+          900: 'var(--color-primary-900)',
+        },
+        secondary: {
+          500: 'var(--color-secondary-500)',
+          600: 'var(--color-secondary-600)',
+          700: 'var(--color-secondary-700)',
+        },
+        success: {
+          50: 'var(--color-success-50)',
+          100: 'var(--color-success-100)',
+          200: 'var(--color-success-200)',
+          400: 'var(--color-success-400)',
+          500: 'var(--color-success-500)',
+          600: 'var(--color-success-600)',
+        },
+        danger: {
+          50: 'var(--color-danger-50)',
+          100: 'var(--color-danger-100)',
+          200: 'var(--color-danger-200)',
+          400: 'var(--color-danger-400)',
+          500: 'var(--color-danger-500)',
+          600: 'var(--color-danger-600)',
+        },
+        info: {
+          50: 'var(--color-info-50)',
+          100: 'var(--color-info-100)',
+          200: 'var(--color-info-200)',
+          400: 'var(--color-info-400)',
+          500: 'var(--color-info-500)',
+          600: 'var(--color-info-600)',
+        },
+        gray: {
+          50: 'var(--color-gray-50)',
+          100: 'var(--color-gray-100)',
+          200: 'var(--color-gray-200)',
+          300: 'var(--color-gray-300)',
+          400: 'var(--color-gray-400)',
+          500: 'var(--color-gray-500)',
+          600: 'var(--color-gray-600)',
+          700: 'var(--color-gray-700)',
+          800: 'var(--color-gray-800)',
+          900: 'var(--color-gray-900)',
+        },
+        background: 'var(--color-background)',
+        surface: 'var(--color-surface)',
+        'surface-elevated': 'var(--color-surface-elevated)',
+        'text-primary': 'var(--color-text-primary)',
+        'text-secondary': 'var(--color-text-secondary)',
+        'text-muted': 'var(--color-text-muted)',
+        'text-inverse': 'var(--color-text-inverse)',
+        border: 'var(--color-border)',
+        'border-focus': 'var(--color-border-focus)',
+        'border-light': 'var(--color-border-light)',
+      },
+      fontFamily: {
+        sans: 'var(--font-sans)',
+        display: 'var(--font-display)',
+      },
+      fontSize: {
+        xs: 'var(--text-xs)',
+        sm: 'var(--text-sm)',
+        base: 'var(--text-base)',
+        lg: 'var(--text-lg)',
+        xl: 'var(--text-xl)',
+        '2xl': 'var(--text-2xl)',
+        '3xl': 'var(--text-3xl)',
+        '4xl': 'var(--text-4xl)',
+      },
+      backgroundImage: {
+        'gradient-primary': 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        'gradient-primary-light': 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)',
+        'gradient-cta': 'linear-gradient(45deg, #ff6b6b, #ff8e53)',
+        'gradient-cta-hover': 'linear-gradient(45deg, #ff5252, #ff7043)',
+      },
+      backdropBlur: {
+        xs: '2px',
+        sm: '4px',
+        base: '8px',
+        md: '12px',
+        lg: '16px',
+        xl: '24px',
+      },
+      boxShadow: {
+        'glass': '0 8px 32px rgba(31, 38, 135, 0.37)',
+        'glass-hover': '0 15px 35px rgba(31, 38, 135, 0.5)',
+        'button': '0 8px 20px rgba(102, 126, 234, 0.3)',
+        'button-hover': '0 12px 25px rgba(102, 126, 234, 0.4)',
+        'cta': '0 8px 20px rgba(255, 107, 107, 0.3)',
+        'cta-hover': '0 12px 25px rgba(255, 107, 107, 0.4)',
+      },
+      borderRadius: {
+        'glass': '20px',
+        'button': '30px',
+      },
+      animation: {
+        'float': 'float 6s ease-in-out infinite',
+        'pulse-slow': 'pulse 2s ease-in-out infinite',
+        'ripple': 'ripple 0.6s linear',
+      },
+      keyframes: {
+        float: {
+          '0%, 100%': { transform: 'translateY(100vh) rotate(0deg)', opacity: '0' },
+          '10%': { opacity: '0.1' },
+          '50%': { transform: 'translateY(-20px) rotate(180deg)', opacity: '0.3' },
+          '90%': { opacity: '0.1' },
+        },
+        ripple: {
+          'to': { transform: 'scale(4)', opacity: '0' },
+        },
+      },
+    },
+  },
+  plugins: [],
+}
+
+export default config

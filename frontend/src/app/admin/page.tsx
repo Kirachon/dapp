@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
+import { useQuery } from '@apollo/client';
+import { ADMIN_STATS } from '@/lib/admin-queries';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface DashboardStats {
@@ -25,47 +27,57 @@ interface RecentActivity {
 export default function AdminDashboard() {
   const router = useRouter();
   const { user, isAuthenticated } = useAuth();
-  const [stats, setStats] = useState<DashboardStats>({
-    totalUsers: 12847,
-    activeUsers: 3421,
-    totalMatches: 8934,
-    pendingReports: 23,
-    pendingPhotos: 156,
-    revenue: 45230
+
+  // Fetch admin stats from GraphQL
+  const { data: statsData, loading: statsLoading, error: statsError, refetch } = useQuery(ADMIN_STATS, {
+    fetchPolicy: 'cache-and-network',
+    errorPolicy: 'all'
   });
 
-  const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([
+  const stats = statsData?.adminStats || {
+    totalUsers: 0,
+    activeUsers: 0,
+    totalMatches: 0,
+    pendingReports: 0,
+    pendingPhotos: 0,
+    revenue: 0,
+    newUsersToday: 0,
+    newUsersThisWeek: 0,
+    newUsersThisMonth: 0
+  };
+
+  // Generate recent activity based on stats
+  const recentActivity: RecentActivity[] = [
     {
       id: '1',
       type: 'user_signup',
-      description: 'New user registration',
-      timestamp: new Date(Date.now() - 300000),
-      user: 'Sarah Johnson'
+      description: `${stats.newUsersToday} new users registered today`,
+      timestamp: new Date(),
+      user: 'System'
     },
     {
       id: '2',
       type: 'match_created',
-      description: 'New match created',
-      timestamp: new Date(Date.now() - 600000),
-      user: 'Emma Wilson & Mike Davis'
+      description: `${stats.totalMatches} total matches created`,
+      timestamp: new Date(Date.now() - 15 * 60 * 1000) // 15 minutes ago
     },
     {
       id: '3',
       type: 'report_submitted',
-      description: 'User report submitted',
-      timestamp: new Date(Date.now() - 900000),
-      user: 'Anonymous'
+      description: `${stats.pendingReports} reports pending review`,
+      timestamp: new Date(Date.now() - 30 * 60 * 1000), // 30 minutes ago
+      user: 'Moderation'
     },
     {
       id: '4',
       type: 'photo_uploaded',
-      description: 'Photo pending approval',
-      timestamp: new Date(Date.now() - 1200000),
-      user: 'Jessica Chen'
+      description: `${stats.pendingPhotos} photos awaiting moderation`,
+      timestamp: new Date(Date.now() - 45 * 60 * 1000), // 45 minutes ago
+      user: 'System'
     }
-  ]);
+  ];
 
-  // Check admin access
+  // Admin access checks
   useEffect(() => {
     if (!isAuthenticated) {
       router.push('/signin?redirect=/admin');
@@ -78,6 +90,15 @@ export default function AdminDashboard() {
       return;
     }
   }, [isAuthenticated, user, router]);
+
+  // Auto-refresh stats every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refetch();
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [refetch]);
 
   const formatNumber = (num: number) => {
     return new Intl.NumberFormat().format(num);
@@ -120,12 +141,32 @@ export default function AdminDashboard() {
     }
   };
 
-  if (!isAuthenticated) {
+  // Loading state
+  if (statsLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#667eea] to-[#764ba2] flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin w-8 h-8 border-2 border-white border-t-transparent rounded-full mx-auto mb-4"></div>
-          <p className="text-white/80">Checking access...</p>
+          <p className="text-white/80">Loading admin dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (statsError) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#667eea] to-[#764ba2] flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-red-400 text-4xl mb-4">⚠️</div>
+          <h2 className="text-white text-xl font-semibold mb-2">Error Loading Dashboard</h2>
+          <p className="text-white/80 mb-4">{statsError.message}</p>
+          <button
+            onClick={() => refetch()}
+            className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg transition-colors"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );
@@ -224,6 +265,7 @@ export default function AdminDashboard() {
               {[
                 { label: 'User Management', icon: '👥', href: '/admin/users' },
                 { label: 'Content Moderation', icon: '🛡️', href: '/admin/moderation' },
+                { label: 'Content Management', icon: '📝', href: '/admin/content' },
                 { label: 'Reports', icon: '📊', href: '/admin/reports' },
                 { label: 'Settings', icon: '⚙️', href: '/admin/settings' }
               ].map((action) => (

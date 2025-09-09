@@ -40,6 +40,33 @@ enum ProfileVisibility {
   MATCHES_ONLY
 }
 
+enum UserStatus {
+  ACTIVE
+  BANNED
+  PENDING
+  SUSPENDED
+}
+
+enum ModerationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ModerationPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWED
+  RESOLVED
+  DISMISSED
+}
+
 // Core Models
 model User {
   id                 String              @id @default(uuid())
@@ -48,7 +75,7 @@ model User {
   roles              String[]            @default([]) // RBAC roles
   verificationLevel  VerificationLevel   @default(UNVERIFIED)
   createdAt          DateTime            @default(now())
-  lastActive         DateTime?
+  lastActiveAt       DateTime?
   deletedAt          DateTime?
 
   // Relations
@@ -60,6 +87,16 @@ model User {
   matchesA           Match[]             @relation("MatchesA")
   matchesB           Match[]             @relation("MatchesB")
   messages           Message[]
+  reports            Report[]            @relation("ReportedUser")
+  reportedBy         Report[]            @relation("ReportedBy")
+  moderationItems    ModerationItem[]    @relation("ModerationUser")
+  moderationReports  ModerationItem[]    @relation("ModerationReporter")
+
+  @@index([email])
+  @@index([createdAt])
+  @@index([lastActiveAt])
+  @@index([roles])
+  @@index([verificationLevel])
 }
 
 model Profile {
@@ -78,12 +115,18 @@ model Profile {
   videoIntroUrl String?
   prompts       String[] @default([])
   visibility    ProfileVisibility @default(PUBLIC)
+  status        UserStatus @default(ACTIVE)
+  isAdmin       Boolean @default(false)
+  verified      Boolean @default(false)
 
   @@index([age])
   @@index([gender])
   @@index([visibility])
+  @@index([status])
   @@index([age, gender])
   @@index([gender, visibility])
+  @@index([age, gender, visibility])
+  @@index([visibility, status])
 }
 
 model Preferences {
@@ -166,4 +209,108 @@ model Message {
 
   @@index([conversationId, createdAt])
   @@index([readAt])
+  @@index([senderId, readAt])
+  @@index([conversationId, readAt])
+}
+
+model Report {
+  id             String       @id @default(uuid())
+  reportedUserId String
+  reportedById   String
+  reason         String
+  description    String?
+  status         ReportStatus @default(PENDING)
+  priority       ModerationPriority @default(MEDIUM)
+  createdAt      DateTime     @default(now())
+  reviewedAt     DateTime?
+  reviewedBy     String?
+
+  reportedUser   User         @relation("ReportedUser", fields: [reportedUserId], references: [id], onDelete: Cascade)
+  reportedBy     User         @relation("ReportedBy", fields: [reportedById], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([priority])
+  @@index([createdAt])
+}
+
+model ModerationItem {
+  id           String             @id @default(uuid())
+  type         String             // PHOTO, PROFILE, MESSAGE, etc.
+  userId       String
+  content      String
+  reason       String
+  priority     ModerationPriority @default(MEDIUM)
+  status       ModerationStatus   @default(PENDING)
+  submittedAt  DateTime           @default(now())
+  reportedById String?
+  reviewedAt   DateTime?
+  reviewedBy   String?
+
+  user         User               @relation("ModerationUser", fields: [userId], references: [id], onDelete: Cascade)
+  reportedBy   User?              @relation("ModerationReporter", fields: [reportedById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([priority])
+  @@index([submittedAt])
+  @@index([type])
+}
+
+// Content Management Models
+model FeatureFlag {
+  id                String   @id @default(uuid())
+  key               String   @unique
+  name              String
+  description       String?
+  enabled           Boolean  @default(false)
+  targetAudience    String   @default("all") // 'all', 'premium', 'beta'
+  rolloutPercentage Int      @default(100)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([enabled])
+  @@index([targetAudience])
+}
+
+model EmailTemplate {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  name        String
+  subject     String
+  htmlContent String
+  textContent String?
+  variables   Json     @default("[]")
+  category    String   @default("notification") // 'auth', 'notification', 'marketing'
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+  @@index([enabled])
+}
+
+model AppConfig {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       Json
+  description String?
+  category    String   @default("general") // 'general', 'branding', 'limits', 'matching', 'notifications'
+  isPublic    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+  @@index([isPublic])
+}
+
+model ContentPage {
+  id              String   @id @default(uuid())
+  slug            String   @unique
+  title           String
+  content         String
+  metaDescription String?
+  published       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([published])
 }

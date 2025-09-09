@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DApp - Profile View</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .phone-container {
+            width: 375px;
+            height: 812px;
+            background: #000;
+            border-radius: 40px;
+            padding: 8px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        }
+
+        .screen {
+            width: 100%;
+            height: 100%;
+            background: #fff;
+            border-radius: 32px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .profile-header {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 10;
+            background: rgba(0,0,0,0.3);
+            padding: 60px 20px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .back-btn {
+            width: 40px;
+            height: 40px;
+            background: rgba(255,255,255,0.2);
+            border: none;
+            border-radius: 50%;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+        }
+
+        .menu-btn {
+            width: 40px;
+            height: 40px;
+            background: rgba(255,255,255,0.2);
+            border: none;
+            border-radius: 50%;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+        }
+
+        .photo-carousel {
+            width: 100%;
+            height: 500px;
+            position: relative;
+            background: linear-gradient(45deg, #f0f0f0, #e0e0e0);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+            font-size: 16px;
+            text-align: center;
+        }
+
+        .photo-indicators {
+            position: absolute;
+            top: 100px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            gap: 8px;
+            z-index: 5;
+        }
+
+        .photo-dot {
+            flex: 1;
+            height: 3px;
+            background: rgba(255,255,255,0.4);
+            border-radius: 2px;
+        }
+
+        .photo-dot.active {
+            background: white;
+        }
+
+        .profile-content {
+            padding: 0 20px;
+            height: calc(100% - 500px);
+            overflow-y: auto;
+            background: #fff;
+        }
+
+        .profile-basic-info {
+            padding: 24px 0;
+            border-bottom: 1px solid #E5E5E7;
+        }
+
+        .profile-name-line {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .profile-name {
+            font-size: 28px;
+            font-weight: bold;
+            color: #000;
+        }
+
+        .verified-badge {
+            background: #007AFF;
+            color: white;
+            font-size: 16px;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .profile-meta {
+            font-size: 16px;
+            color: #8E8E93;
+            margin-bottom: 12px;
+        }
+
+        .mutual-connections {
+            background: rgba(0, 122, 255, 0.05);
+            border: 1px solid rgba(0, 122, 255, 0.2);
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 14px;
+            color: #007AFF;
+            display: inline-block;
+        }
+
+        .profile-section {
+            padding: 24px 0;
+            border-bottom: 1px solid #E5E5E7;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 16px;
+            color: #000;
+        }
+
+        .about-text {
+            font-size: 16px;
+            line-height: 1.5;
+            color: #000;
+            margin-bottom: 16px;
+        }
+
+        .prompt-item {
+            margin-bottom: 20px;
+        }
+
+        .prompt-question {
+            font-size: 14px;
+            color: #8E8E93;
+            margin-bottom: 6px;
+        }
+
+        .prompt-answer {
+            font-size: 16px;
+            color: #000;
+            font-weight: 500;
+        }
+
+        .interests-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .interest-tag {
+            background: #F2F2F7;
+            color: #007AFF;
+            padding: 8px 14px;
+            border-radius: 16px;
+            font-size: 14px;
+            font-weight: 500;
+            border: 1px solid rgba(0, 122, 255, 0.2);
+        }
+
+        .lifestyle-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .lifestyle-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .lifestyle-icon {
+            width: 40px;
+            height: 40px;
+            background: #F2F2F7;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .lifestyle-info h4 {
+            font-size: 14px;
+            color: #8E8E93;
+            margin-bottom: 2px;
+        }
+
+        .lifestyle-info p {
+            font-size: 16px;
+            color: #000;
+            font-weight: 500;
+        }
+
+        .looking-for-item {
+            background: #F8F9FA;
+            border: 1px solid #E5E5E7;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+
+        .looking-for-item h4 {
+            font-size: 14px;
+            color: #8E8E93;
+            margin-bottom: 6px;
+        }
+
+        .looking-for-item p {
+            font-size: 16px;
+            color: #000;
+        }
+
+        .integration-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px;
+            background: #F8F9FA;
+            border-radius: 12px;
+            margin-bottom: 12px;
+        }
+
+        .integration-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: white;
+        }
+
+        .instagram-icon {
+            background: linear-gradient(45deg, #f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%);
+        }
+
+        .spotify-icon {
+            background: #1DB954;
+        }
+
+        .integration-info h4 {
+            font-size: 16px;
+            color: #000;
+            margin-bottom: 2px;
+        }
+
+        .integration-info p {
+            font-size: 14px;
+            color: #8E8E93;
+        }
+
+        .action-buttons {
+            position: fixed;
+            bottom: 34px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 24px;
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            padding: 16px 32px;
+            border-radius: 28px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        }
+
+        .action-btn {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+        }
+
+        .action-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .btn-pass {
+            background: #8E8E93;
+            color: white;
+        }
+
+        .btn-super {
+            background: #007AFF;
+            color: white;
+        }
+
+        .btn-like {
+            background: #FF2D92;
+            color: white;
+        }
+
+        .scroll-indicator {
+            position: fixed;
+            right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 4px;
+            height: 100px;
+            background: rgba(0,0,0,0.1);
+            border-radius: 2px;
+        }
+
+        .scroll-thumb {
+            width: 100%;
+            height: 30%;
+            background: #007AFF;
+            border-radius: 2px;
+            transition: top 0.1s ease;
+        }
+
+        .photo-nav {
+            position: absolute;
+            top: 0;
+            width: 50%;
+            height: 100%;
+            cursor: pointer;
+            z-index: 3;
+        }
+
+        .photo-nav.left {
+            left: 0;
+        }
+
+        .photo-nav.right {
+            right: 0;
+        }
+
+        /* Photo transition effect */
+        .photo-carousel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.3) 100%);
+            z-index: 1;
+        }
+
+        .photo-content {
+            position: relative;
+            z-index: 2;
+        }
+    </style>
+</head>
+<body>
+    <div class="phone-container">
+        <div class="screen">
+            <div class="profile-header">
+                <button class="back-btn">←</button>
+                <button class="menu-btn">⋯</button>
+            </div>
+
+            <div class="photo-carousel" id="photoCarousel">
+                <div class="photo-indicators">
+                    <div class="photo-dot active"></div>
+                    <div class="photo-dot"></div>
+                    <div class="photo-dot"></div>
+                    <div class="photo-dot"></div>
+                </div>
+                
+                <div class="photo-nav left" onclick="previousPhoto()"></div>
+                <div class="photo-nav right" onclick="nextPhoto()"></div>
+                
+                <div class="photo-content">
+                    Photo 1 of 4<br>
+                    <small>Sarah, 28</small>
+                </div>
+            </div>
+
+            <div class="profile-content">
+                <div class="profile-basic-info">
+                    <div class="profile-name-line">
+                        <h1 class="profile-name">Sarah</h1>
+                        <div class="verified-badge">✓</div>
+                    </div>
+                    <div class="profile-meta">28 • 2 miles away • Active today</div>
+                    <div class="mutual-connections">👥 2 mutual connections</div>
+                </div>
+
+                <div class="profile-section">
+                    <h2 class="section-title">About Sarah</h2>
+                    <div class="about-text">
+                        Adventure seeker with a passion for hiking and discovering new coffee shops around the city. I believe life's too short for bad coffee and boring conversations. Looking for someone who can keep up with my weekend adventures and enjoys deep talks over great food.
+                    </div>
+                    
+                    <div class="prompt-item">
+                        <div class="prompt-question">My ideal weekend is...</div>
+                        <div class="prompt-answer">Hiking a new trail then trying a cozy café</div>
+                    </div>
+                    
+                    <div class="prompt-item">
+                        <div class="prompt-question">I'm passionate about...</div>
+                        <div class="prompt-answer">Environmental conservation and travel photography</div>
+                    </div>
+                    
+                    <div class="prompt-item">
+                        <div class="prompt-question">My love language is...</div>
+                        <div class="prompt-answer">Quality time and acts of service</div>
+                    </div>
+                </div>
+
+                <div class="profile-section">
+                    <h2 class="section-title">Interests</h2>
+                    <div class="interests-grid">
+                        <div class="interest-tag">🥾 Hiking</div>
+                        <div class="interest-tag">☕ Coffee</div>
+                        <div class="interest-tag">📸 Photography</div>
+                        <div class="interest-tag">🧘‍♀️ Yoga</div>
+                        <div class="interest-tag">📚 Reading</div>
+                        <div class="interest-tag">🍷 Wine Tasting</div>
+                        <div class="interest-tag">✈️ Travel</div>
+                        <div class="interest-tag">🎬 Indie Films</div>
+                        <div class="interest-tag">🌱 Sustainability</div>
+                        <div class="interest-tag">🐕 Dogs</div>
+                    </div>
+                </div>
+
+                <div class="profile-section">
+                    <h2 class="section-title">Looking For</h2>
+                    <div class="looking-for-item">
+                        <h4>Relationship Type</h4>
+                        <p>Long-term relationship</p>
+                    </div>
+                    <div class="looking-for-item">
+                        <h4>Age Range</h4>
+                        <p>25-35</p>
+                    </div>
+                    <div class="looking-for-item">
+                        <h4>Distance</h4>
+                        <p>Within 15 miles</p>
+                    </div>
+                </div>
+
+                <div class="profile-section">
+                    <h2 class="section-title">Lifestyle</h2>
+                    <div class="lifestyle-grid">
+                        <div class="lifestyle-item">
+                            <div class="lifestyle-icon">🎓</div>
+                            <div class="lifestyle-info">
+                                <h4>Education</h4>
+                                <p>Master's Degree</p>
+                            </div>
+                        </div>
+                        <div class="lifestyle-item">
+                            <div class="lifestyle-icon">💼</div>
+                            <div class="lifestyle-info">
+                                <h4>Work</h4>
+                                <p>Marketing Manager</p>
+                            </div>
+                        </div>
+                        <div class="lifestyle-item">
+                            <div class="lifestyle-icon">🏃‍♀️</div>
+                            <div class="lifestyle-info">
+                                <h4>Exercise</h4>
+                                <p>Active lifestyle</p>
+                            </div>
+                        </div>
+                        <div class="lifestyle-item">
+                            <div class="lifestyle-icon">🚭</div>
+                            <div class="lifestyle-info">
+                                <h4>Smoking</h4>
+                                <p>Never</p>
+                            </div>
+                        </div>
+                        <div class="lifestyle-item">
+                            <div class="lifestyle-icon">🍷</div>
+                            <div class="lifestyle-info">
+                                <h4>Drinking</h4>
+                                <p>Socially</p>
+                            </div>
+                        </div>
+                        <div class="lifestyle-item">
+                            <div class="lifestyle-icon">👶</div>
+                            <div class="lifestyle-info">
+                                <h4>Children</h4>
+                                <p>Want someday</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="profile-section">
+                    <h2 class="section-title">Connected Accounts</h2>
+                    <div class="integration-section">
+                        <div class="integration-icon instagram-icon">📷</div>
+                        <div class="integration-info">
+                            <h4>Instagram</h4>
+                            <p>@sarahadventures • Recent: Yosemite trip</p>
+                        </div>
+                    </div>
+                    <div class="integration-section">
+                        <div class="integration-icon spotify-icon">🎵</div>
+                        <div class="integration-info">
+                            <h4>Spotify</h4>
+                            <p>Top artist: Bon Iver • Indie/Folk</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="height: 120px;"></div> <!-- Spacer for fixed buttons -->
+            </div>
+
+            <div class="action-buttons">
+                <button class="action-btn btn-pass">✕</button>
+                <button class="action-btn btn-super">★</button>
+                <button class="action-btn btn-like">♥</button>
+            </div>
+
+            <div class="scroll-indicator">
+                <div class="scroll-thumb" id="scrollThumb" style="top: 0;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentPhoto = 0;
+        const totalPhotos = 4;
+
+        function updatePhotoIndicators() {
+            const dots = document.querySelectorAll('.photo-dot');
+            dots.forEach((dot, index) => {
+                dot.classList.toggle('active', index === currentPhoto);
+            });
+            
+            const carousel = document.getElementById('photoCarousel');
+            const photoContent = carousel.querySelector('.photo-content');
+            photoContent.innerHTML = `Photo ${currentPhoto + 1} of ${totalPhotos}<br><small>Sarah, 28</small>`;
+        }
+
+        function nextPhoto() {
+            currentPhoto = (currentPhoto + 1) % totalPhotos;
+            updatePhotoIndicators();
+        }
+
+        function previousPhoto() {
+            currentPhoto = (currentPhoto - 1 + totalPhotos) % totalPhotos;
+            updatePhotoIndicators();
+        }
+
+        // Auto-advance photos every 3 seconds when user isn't interacting
+        let autoAdvance;
+        function startAutoAdvance() {
+            autoAdvance = setInterval(nextPhoto, 3000);
+        }
+
+        function stopAutoAdvance() {
+            clearInterval(autoAdvance);
+        }
+
+        // Scroll indicator
+        const profileContent = document.querySelector('.profile-content');
+        const scrollThumb = document.getElementById('scrollThumb');
+
+        profileContent.addEventListener('scroll', function() {
+            const scrollPercent = this.scrollTop / (this.scrollHeight - this.clientHeight);
+            const thumbPosition = Math.min(scrollPercent * 70, 70); // 70% max position
+            scrollThumb.style.top = thumbPosition + '%';
+        });
+
+        // Touch events for photo swiping
+        let startX, startY, startTime;
+        const carousel = document.getElementById('photoCarousel');
+
+        carousel.addEventListener('touchstart', function(e) {
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+            startTime = Date.now();
+            stopAutoAdvance();
+        });
+
+        carousel.addEventListener('touchend', function(e) {
+            if (!startX || !startY) return;
+            
+            const endX = e.changedTouches[0].clientX;
+            const endY = e.changedTouches[0].clientY;
+            const diffX = startX - endX;
+            const diffY = startY - endY;
+            const timeDiff = Date.now() - startTime;
+            
+            // Check if it's a horizontal swipe (not vertical scroll)
+            if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 30 && timeDiff < 300) {
+                if (diffX > 0) {
+                    nextPhoto();
+                } else {
+                    previousPhoto();
+                }
+            }
+            
+            startX = null;
+            startY = null;
+            setTimeout(startAutoAdvance, 1000);
+        });
+
+        // Start auto-advance on load
+        startAutoAdvance();
+
+        // Pause auto-advance when user is scrolling
+        profileContent.addEventListener('scroll', stopAutoAdvance);
+        profileContent.addEventListener('scrollend', () => setTimeout(startAutoAdvance, 2000));
+    </script>
+</body>
+</html>

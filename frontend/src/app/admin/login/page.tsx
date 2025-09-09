@@ -3,42 +3,37 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
+
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function AdminLoginPage() {
   const [email, setEmail] = useState('admin@loveconnect.com');
   const [password, setPassword] = useState('admin123');
   const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  
+
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { signIn, isAuthenticated, user } = useAuth();
-  
-  const redirect = searchParams.get('redirect') || '/admin';
+  const { signIn, loading, user } = useAuth();
 
-  useEffect(() => {
-    if (isAuthenticated && (user?.isAdmin || user?.roles?.includes('admin'))) {
-      router.push(redirect);
-    }
-  }, [isAuthenticated, user, router, redirect]);
+  const redirect = searchParams.get('redirect') || '/admin';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setIsLoading(true);
 
     try {
       const success = await signIn(email, password);
-      if (success) {
+      if (success && user?.isAdmin) {
+        // Redirect to admin dashboard for admin users
         router.push(redirect);
+      } else if (success) {
+        setError('Access denied. Admin privileges required.');
       } else {
-        setError('Invalid admin credentials');
+        setError('Invalid email or password');
       }
-    } catch (err) {
-      setError('Login failed. Please try again.');
-    } finally {
-      setIsLoading(false);
+    } catch (error: any) {
+      console.error('Admin signin error:', error);
+      setError('Sign in failed. Please try again.');
     }
   };
 
@@ -122,12 +117,12 @@ export default function AdminLoginPage() {
 
             <motion.button
               type="submit"
-              disabled={isLoading}
+              disabled={loading}
               className="w-full bg-gradient-to-r from-[#ff6b6b] to-[#ff8e53] hover:from-[#ff5252] hover:to-[#ff7043] text-white py-3 px-6 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-              whileHover={{ scale: isLoading ? 1 : 1.02 }}
-              whileTap={{ scale: isLoading ? 1 : 0.98 }}
+              whileHover={{ scale: loading ? 1 : 1.02 }}
+              whileTap={{ scale: loading ? 1 : 0.98 }}
             >
-              {isLoading ? (
+              {loading ? (
                 <div className="flex items-center justify-center gap-2">
                   <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div>
                   Signing In...

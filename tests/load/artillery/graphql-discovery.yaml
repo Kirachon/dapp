@@ -1,0 +1,18 @@
+# tests/load/artillery/graphql-discovery.yaml
+# Purpose: Baseline GraphQL query latency/throughput
+config:
+  target: "http://localhost:8080"
+  phases:
+    - duration: 120
+      arrivalRate: 10
+  defaults:
+    headers:
+      Content-Type: application/json
+scenarios:
+  - name: "GraphQL baseline"
+    flow:
+      - post:
+          url: "/graphql"
+          json:
+            query: "query { __typename }"
+

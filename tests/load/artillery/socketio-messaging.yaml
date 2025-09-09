@@ -1,0 +1,25 @@
+# tests/load/artillery/socketio-messaging.yaml
+# Purpose: Basic Socket.IO steady-state connectivity test
+config:
+  target: "http://localhost:8080"
+  phases:
+    - duration: 120
+      arrivalRate: 10
+  engines:
+    socketio: {}
+  socketio:
+    transports: ["websocket"]
+scenarios:
+  - name: "socket.io steady-state"
+    engine: "socketio"
+    flow:
+      - emit:
+          channel: "ping"
+          data:
+            t: "{{ now }}"
+      - think: 1
+      - emit:
+          channel: "ping"
+          data:
+            t: "{{ now }}"
+

@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "jsx": "preserve",
+    "useUnknownInCatchVariables": false
+  },
+  "include": [],
+  "exclude": ["**/*"],
+  "files": [
+    "src/index.ts",
+    "src/routes/photos.ts",
+    "src/services/monitoring.ts",
+    "src/services/socketio.ts",
+    "src/services/storage.ts",
+    "src/lib/logger.ts",
+    "src/lib/db.ts",
+    "src/auth/supertokens.ts"
+  ]
+}
+
