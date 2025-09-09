@@ -134,8 +134,6 @@ export function initSuperTokens() {
       }),
       Session.init({
         cookieSecure: process.env.NODE_ENV === 'production',
-        // Wider cookie path so GraphQL (/graphql) and REST (/api/*) receive the access token cookie
-        cookiePath: '/',
         // Use 'none' in development to allow cross-site cookies between http://localhost:3000 and http://localhost:8080
         cookieSameSite: 'none',
         sessionExpiredStatusCode: 401,

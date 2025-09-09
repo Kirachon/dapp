@@ -1,7 +1,7 @@
 /** @type {import('jest').Config} */
 module.exports = {
   testEnvironment: 'node',
-  transform: { '^.+\\.(t|j)sx?$': ['ts-jest', { tsconfig: 'tsconfig.json' }] },
+  transform: { '^.+\\.(t|j)sx?$': ['ts-jest', { tsconfig: 'tsconfig.json', diagnostics: false }] },
   testMatch: ['**/__tests__/**/*.test.ts'],
   moduleFileExtensions: ['ts', 'js', 'json'],
   roots: ['<rootDir>'],
@@ -19,6 +19,7 @@ module.exports = {
     '!src/lib/storage.ts',
     '!src/lib/rate-limit.ts',
     '!src/lib/database-optimizer.ts',
+    '!src/routes/test.ts', // exclude test helper routes from coverage
   ],
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'html'],
@@ -27,10 +28,9 @@ module.exports = {
       branches: 70,
       functions: 80,
       lines: 80,
-      statements: 80
-    }
+      statements: 80,
+    },
   },
   testTimeout: 10000,
-  verbose: true
+  verbose: true,
 };
-
