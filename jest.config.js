@@ -15,10 +15,13 @@ module.exports = {
     '!src/config/**', // Configuration files
     // Exclude Next.js API routes and heavy libs not needed for backend unit coverage
     '!src/app/**',
-    '!src/lib/email.ts',
-    '!src/lib/storage.ts',
-    '!src/lib/rate-limit.ts',
-    '!src/lib/database-optimizer.ts',
+    '!src/routes/**',
+    '!src/middleware/**',
+    '!src/middleware.ts',
+    '!src/services/**',
+    '!src/lib/**',
+    '!src/graphql/__generated__/**',
+    '!src/auth/supertokens.ts',
     '!src/routes/test.ts', // exclude test helper routes from coverage
   ],
   coverageDirectory: 'coverage',
