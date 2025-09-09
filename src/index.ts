@@ -13,6 +13,9 @@ import { ApolloServer } from '@apollo/server';
 import { fastifyApolloDrainPlugin, fastifyApolloHandler } from '@as-integrations/fastify';
 import { makeExecutableSchema } from '@graphql-tools/schema';
 
+import path from 'path';
+import { readFileSync, readdirSync, statSync } from 'fs';
+
 import supertokens, { getUser as stGetUser } from 'supertokens-node';
 // Import internal core class to access instance methods in TS
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -396,349 +399,27 @@ const corsConfig = getCorsConfig();
   // Test support routes (dev/test only)
   if (process.env.NODE_ENV !== 'production') {
     const { testRoutes } = await import('./routes/test');
+function loadGraphqlSDL(dir: string): string {
+  const entries = readdirSync(dir);
+  const files: string[] = [];
+  for (const entry of entries) {
+    const full = path.join(dir, entry);
+    const st = statSync(full);
+    if (st.isDirectory()) {
+      files.push(loadGraphqlSDL(full));
+    } else if (entry.endsWith('.graphql')) {
+      files.push(readFileSync(full, 'utf8'));
+    }
+  }
+  return files.join('\n');
+}
+
     await server.register(testRoutes, { prefix: '/test' });
   }
 
   // GraphQL schema
-  const typeDefs = /* GraphQL */ `
-    scalar DateTime
+  const typeDefs = loadGraphqlSDL(path.join(__dirname, 'graphql', 'schema'));
 
-    enum SwipeDirection { LEFT RIGHT SUPER }
-    enum MatchStatus { ACTIVE UNMATCHED BLOCKED }
-    enum ProfileVisibility { PUBLIC PRIVATE MATCHES_ONLY }
-
-    # Admin enums
-    enum UserStatus { ACTIVE BANNED PENDING SUSPENDED }
-    enum ModerationStatus { PENDING APPROVED REJECTED }
-    enum ModerationPriority { LOW MEDIUM HIGH URGENT }
-    enum ReportStatus { PENDING REVIEWED RESOLVED DISMISSED }
-
-    type FeatureFlag {
-      key: String!
-      name: String!
-      description: String
-      enabled: Boolean!
-      targetAudience: String!
-      rolloutPercentage: Int!
-    }
-
-    type EmailTemplate {
-      key: String!
-      name: String!
-      subject: String!
-      htmlContent: String!
-      textContent: String
-      variables: [String!]!
-      category: String!
-      enabled: Boolean!
-    }
-
-    type AppConfig {
-      key: String!
-      value: String!
-      description: String
-      category: String!
-      isPublic: Boolean!
-    }
-    type ActivationData {
-      welcomeSequenceStarted: Boolean!
-      welcomeSequenceCompleted: Boolean!
-      currentWelcomeStep: Int!
-      activationScore: Int!
-      activationFactors: [String!]!
-      engagementMetrics: ActivationEngagement!
-      milestones: ActivationMilestones!
-      preferences: ActivationPreferences!
-    }
-
-    type ActivationEngagement {
-      loginFrequency: Int!
-      featureUsage: [String!]!
-      timeSpent: Int!
-      goalsSet: Int!
-      goalsCompleted: Int!
-    }
-
-    type ActivationMilestones {
-      firstLogin: String!
-      profileCompleted: String
-      firstGoalSet: String
-      weeklyActive: Boolean!
-    }
-
-    type ActivationPreferences {
-      welcomeEmails: Boolean!
-      inAppMessages: Boolean!
-      achievementNotifications: Boolean!
-    }
-    type OnboardingData {
-      currentStep: Int!
-      completedSteps: [Int!]!
-      totalSteps: Int!
-      completionPercentage: Int!
-      steps: JSON!
-      analytics: OnboardingAnalytics!
-    }
-
-    type OnboardingAnalytics {
-      startedAt: String!
-      lastActiveAt: String!
-      timeSpent: Int!
-      completionRate: Int!
-    }
-
-    scalar JSON
-
-
-
-
-    type ContentPage {
-      slug: String!
-      title: String!
-      content: String!
-      metaDescription: String
-      published: Boolean!
-    }
-
-    type ContentCategory {
-      key: String!
-      name: String!
-      description: String
-    }
-
-    type Query {
-      health: String!
-      me: Me
-      myProfile: Profile
-      myPreferences: Preferences
-      discoveryFeed(page: Int = 1, pageSize: Int = 20): [Profile!]!
-      myMatches(status: MatchStatus, page: Int = 1, pageSize: Int = 20): [MatchView!]!
-      myConversations(page: Int = 1, pageSize: Int = 20): [ConversationView!]!
-      messages(conversationId: ID!, page: Int = 1, pageSize: Int = 50): [Message!]!
-      profile(userId: ID!): Profile
-
-      # Activation
-      activationData: ActivationData
-
-      # Onboarding
-      onboardingData: OnboardingData
-
-      # Admin queries
-      adminStats: AdminStats!
-      adminUsers(limit: Int = 20, offset: Int = 0, status: UserStatus, search: String): AdminUsersResult!
-      adminModeration(limit: Int = 20, offset: Int = 0, status: ModerationStatus, priority: ModerationPriority): AdminModerationResult!
-      adminReports(limit: Int = 20, offset: Int = 0, status: ReportStatus): AdminReportsResult!
-
-      # Content management queries
-      featureFlags: [FeatureFlag!]!
-      featureFlag(key: String!): FeatureFlag
-      emailTemplates: [EmailTemplate!]!
-      emailTemplate(key: String!): EmailTemplate
-      appConfigs(publicOnly: Boolean = false): [AppConfig!]!
-      appConfig(key: String!): String
-      contentPages(publishedOnly: Boolean = true): [ContentPage!]!
-      contentPage(slug: String!): ContentPage
-      contentCategories: [ContentCategory!]!
-      contentCategory(key: String!): ContentCategory
-    }
-
-    type Me {
-      id: ID!
-      email: String!
-      roles: [String!]!
-      profile: MeProfile
-    }
-
-    type MeProfile {
-      id: ID!
-      name: String!
-      isAdmin: Boolean!
-    }
-
-    type Profile {
-      userId: ID!
-      name: String!
-      age: Int!
-      gender: String
-      orientation: String
-      bio: String
-      interests: [String!]!
-      lifestyle: String
-      education: String
-      photos: [String!]!
-      videoIntroUrl: String
-      prompts: [String!]!
-      visibility: ProfileVisibility!
-    }
-
-    input ProfileInput {
-      name: String!
-      age: Int!
-      gender: String
-      orientation: String
-      bio: String
-      interests: [String!]
-      lifestyle: String
-      education: String
-      photos: [String!]
-      videoIntroUrl: String
-      prompts: [String!]
-      visibility: ProfileVisibility
-    }
-
-    type Preferences {
-      userId: ID!
-      minAge: Int!
-      maxAge: Int!
-      distanceKm: Int!
-      showMe: String
-    }
-
-    input PreferencesInput {
-      minAge: Int
-      maxAge: Int
-      distanceKm: Int
-      showMe: String
-    }
-
-    type MatchView {
-      id: ID!
-      status: MatchStatus!
-      createdAt: DateTime!
-      otherUser: Profile!
-    }
-
-    type ConversationView {
-      id: ID!
-      matchId: ID!
-      lastMessageAt: DateTime
-      otherUser: Profile!
-      unreadCount: Int!
-    }
-
-    type Message {
-      id: ID!
-      conversationId: ID!
-      senderId: ID!
-      type: String!
-      content: String
-      mediaUrls: [String!]!
-      createdAt: DateTime!
-      readAt: DateTime
-    }
-
-    type SwipeResult { ok: Boolean!, matched: Boolean!, matchId: ID }
-
-    type MeResult { ok: Boolean!, error: String, user: Me }
-
-    # Admin types
-    type AdminStats {
-      totalUsers: Int!
-      activeUsers: Int!
-      totalMatches: Int!
-      pendingReports: Int!
-      pendingPhotos: Int!
-      revenue: Float!
-      newUsersToday: Int!
-      newUsersThisWeek: Int!
-      newUsersThisMonth: Int!
-    }
-
-    type AdminUser {
-      id: ID!
-      email: String!
-      profile: Profile
-      status: UserStatus!
-      createdAt: DateTime!
-      lastActiveAt: DateTime
-      reportCount: Int!
-      verified: Boolean!
-      roles: [String!]!
-    }
-
-    type AdminUsersResult {
-      users: [AdminUser!]!
-      totalCount: Int!
-      hasMore: Boolean!
-    }
-
-    type AdminModerationItem {
-      id: ID!
-      type: String!
-      user: AdminUser!
-      content: String!
-      reason: String!
-      priority: ModerationPriority!
-      status: ModerationStatus!
-      submittedAt: DateTime!
-      reportedBy: String
-      reviewedAt: DateTime
-      reviewedBy: String
-    }
-
-    type AdminModerationResult {
-      items: [AdminModerationItem!]!
-      totalCount: Int!
-      hasMore: Boolean!
-    }
-
-    type AdminReport {
-      id: ID!
-      reportedUser: AdminUser!
-      reportedBy: AdminUser!
-      reason: String!
-      description: String
-      status: ReportStatus!
-      priority: ModerationPriority!
-      createdAt: DateTime!
-      reviewedAt: DateTime
-      reviewedBy: String
-    }
-
-    type AdminReportsResult {
-      reports: [AdminReport!]!
-      totalCount: Int!
-      hasMore: Boolean!
-    }
-
-    type Mutation {
-      signUp(email: String!, password: String!, acceptTerms: Boolean!): MeResult!
-      signIn(email: String!, password: String!): MeResult!
-      signOut: Boolean!
-      resetPassword(email: String!): Boolean!
-      verifyEmail(token: String!): Boolean!
-      resendVerificationEmail: Boolean!
-
-      upsertMyProfile(input: ProfileInput!): Profile!
-      upsertMyPreferences(input: PreferencesInput!): Preferences!
-      updateMyLocation(latitude: Float!, longitude: Float!): Boolean!
-
-      changeMyPassword(currentPassword: String!, newPassword: String!): Boolean!
-      changeMyEmail(newEmail: String!): Boolean!
-      deleteMyAccount: Boolean!
-      sendWelcomeEmail: Boolean!
-
-      swipe(targetUserId: ID!, direction: SwipeDirection!): SwipeResult!
-      sendMessage(conversationId: ID!, content: String, mediaUrls: [String!]): Message!
-      markConversationRead(conversationId: ID!): Boolean!
-
-      # Admin mutations
-      adminBanUser(userId: ID!, reason: String!): Boolean!
-      adminUnbanUser(userId: ID!): Boolean!
-      adminVerifyUser(userId: ID!): Boolean!
-      adminDeleteUser(userId: ID!): Boolean!
-      adminModerationAction(itemId: ID!, action: String!, reason: String): Boolean!
-      adminResolveReport(reportId: ID!, action: String!, reason: String): Boolean!
-
-      # Content management mutations
-      updateFeatureFlag(key: String!, enabled: Boolean, rolloutPercentage: Int): Boolean!
-      updateEmailTemplate(key: String!, subject: String, htmlContent: String, textContent: String, enabled: Boolean): Boolean!
-      updateAppConfig(key: String!, value: String!, description: String): Boolean!
-      updateContentPage(slug: String!, title: String, content: String, metaDescription: String, published: Boolean): Boolean!
-    }
-
-
-  `;
 
   // Admin authorization helper
   const requireAdmin = (resolver: any) => {

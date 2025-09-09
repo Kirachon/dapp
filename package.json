@@ -20,7 +20,9 @@
     "prisma:studio": "prisma studio",
     "db:seed": "node scripts/seed.js",
     "test": "jest --passWithNoTests",
-    "health-check": "node scripts/health-check.js"
+    "health-check": "node scripts/health-check.js",
+    "codegen": "graphql-codegen --config codegen.ts",
+    "codegen:watch": "graphql-codegen --config codegen.ts --watch"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": [
@@ -41,6 +43,11 @@
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
+    "@graphql-codegen/cli": "^6.0.0",
+    "@graphql-codegen/typed-document-node": "^6.0.0",
+    "@graphql-codegen/typescript": "^5.0.0",
+    "@graphql-codegen/typescript-operations": "^5.0.0",
+    "@graphql-codegen/typescript-resolvers": "^5.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.2.1",
     "@types/supertest": "^6.0.3",

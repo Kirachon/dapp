@@ -1,0 +1,72 @@
+type Query {
+  health: String!
+  me: Me
+  myProfile: Profile
+  myPreferences: Preferences
+  discoveryFeed(page: Int = 1, pageSize: Int = 20): [Profile!]!
+  myMatches(status: MatchStatus, page: Int = 1, pageSize: Int = 20): [MatchView!]!
+  myConversations(page: Int = 1, pageSize: Int = 20): [ConversationView!]!
+  messages(conversationId: ID!, page: Int = 1, pageSize: Int = 50): [Message!]!
+  profile(userId: ID!): Profile
+
+  # Activation
+  activationData: ActivationData
+
+  # Onboarding
+  onboardingData: OnboardingData
+
+  # Admin queries
+  adminStats: AdminStats!
+  adminUsers(limit: Int = 20, offset: Int = 0, status: UserStatus, search: String): AdminUsersResult!
+  adminModeration(limit: Int = 20, offset: Int = 0, status: ModerationStatus, priority: ModerationPriority): AdminModerationResult!
+  adminReports(limit: Int = 20, offset: Int = 0, status: ReportStatus): AdminReportsResult!
+
+  # Content management queries
+  featureFlags: [FeatureFlag!]!
+  featureFlag(key: String!): FeatureFlag
+  emailTemplates: [EmailTemplate!]!
+  emailTemplate(key: String!): EmailTemplate
+  appConfigs(publicOnly: Boolean = false): [AppConfig!]!
+  appConfig(key: String!): String
+  contentPages(publishedOnly: Boolean = true): [ContentPage!]!
+  contentPage(slug: String!): ContentPage
+  contentCategories: [ContentCategory!]!
+  contentCategory(key: String!): ContentCategory
+}
+
+type Mutation {
+  signUp(email: String!, password: String!, acceptTerms: Boolean!): MeResult!
+  signIn(email: String!, password: String!): MeResult!
+  signOut: Boolean!
+  resetPassword(email: String!): Boolean!
+  verifyEmail(token: String!): Boolean!
+  resendVerificationEmail: Boolean!
+
+  upsertMyProfile(input: ProfileInput!): Profile!
+  upsertMyPreferences(input: PreferencesInput!): Preferences!
+  updateMyLocation(latitude: Float!, longitude: Float!): Boolean!
+
+  changeMyPassword(currentPassword: String!, newPassword: String!): Boolean!
+  changeMyEmail(newEmail: String!): Boolean!
+  deleteMyAccount: Boolean!
+  sendWelcomeEmail: Boolean!
+
+  swipe(targetUserId: ID!, direction: SwipeDirection!): SwipeResult!
+  sendMessage(conversationId: ID!, content: String, mediaUrls: [String!]): Message!
+  markConversationRead(conversationId: ID!): Boolean!
+
+  # Admin mutations
+  adminBanUser(userId: ID!, reason: String!): Boolean!
+  adminUnbanUser(userId: ID!): Boolean!
+  adminVerifyUser(userId: ID!): Boolean!
+  adminDeleteUser(userId: ID!): Boolean!
+  adminModerationAction(itemId: ID!, action: String!, reason: String): Boolean!
+  adminResolveReport(reportId: ID!, action: String!, reason: String): Boolean!
+
+  # Content management mutations
+  updateFeatureFlag(key: String!, enabled: Boolean, rolloutPercentage: Int): Boolean!
+  updateEmailTemplate(key: String!, subject: String, htmlContent: String, textContent: String, enabled: Boolean): Boolean!
+  updateAppConfig(key: String!, value: String!, description: String): Boolean!
+  updateContentPage(slug: String!, title: String, content: String, metaDescription: String, published: Boolean): Boolean!
+}
+
