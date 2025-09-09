@@ -36,7 +36,9 @@ const UPSERT_PREFERENCES = gql`
 `;
 
 const SEND_WELCOME = gql`
-  mutation SendWelcome { sendWelcomeEmail }
+  mutation SendWelcome {
+    sendWelcomeEmail
+  }
 `;
 
 const UPDATE_LOCATION = gql`
@@ -71,7 +73,6 @@ export interface OnboardingPreferences {
   showMe?: string;
 }
 
-
 export interface OnboardingPrompts {
   prompts: Array<{ question: string; answer: string }>;
 }
@@ -93,7 +94,7 @@ class OnboardingService {
   // Photo upload service using presigned URLs with retry logic
   async uploadPhoto(
     file: File,
-    maxRetries: number = 3
+    maxRetries: number = 3,
   ): Promise<{ url: string; thumbnailUrl: string; filename: string }> {
     let lastError: Error | null = null;
 
@@ -110,12 +111,14 @@ class OnboardingService {
           body: JSON.stringify({
             filename: file.name,
             mimeType: file.type,
-          })
+          }),
         });
 
         if (!uploadUrlResponse.ok) {
           const errorData = await uploadUrlResponse.json().catch(() => ({}));
-          throw new Error(errorData.error || `Failed to get upload URL (${uploadUrlResponse.status})`);
+          throw new Error(
+            errorData.error || `Failed to get upload URL (${uploadUrlResponse.status})`,
+          );
         }
 
         const uploadUrlResult = await uploadUrlResponse.json();
@@ -135,7 +138,9 @@ class OnboardingService {
         });
 
         if (!uploadResponse.ok) {
-          throw new Error(`Upload failed with status: ${uploadResponse.status} ${uploadResponse.statusText}`);
+          throw new Error(
+            `Upload failed with status: ${uploadResponse.status} ${uploadResponse.statusText}`,
+          );
         }
 
         console.log(`✅ Photo uploaded successfully: ${filename} (attempt ${attempt})`);
@@ -147,7 +152,10 @@ class OnboardingService {
         };
       } catch (error) {
         lastError = error instanceof Error ? error : new Error('Unknown upload error');
-        console.warn(`⚠️  Upload attempt ${attempt}/${maxRetries} failed for ${file.name}:`, lastError.message);
+        console.warn(
+          `⚠️  Upload attempt ${attempt}/${maxRetries} failed for ${file.name}:`,
+          lastError.message,
+        );
 
         // Don't retry on certain errors
         if (lastError.message.includes('401') || lastError.message.includes('403')) {
@@ -166,19 +174,26 @@ class OnboardingService {
         if (attempt < maxRetries) {
           const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000); // Max 5 seconds
           console.log(`⏳ Retrying in ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
     }
 
     // All retries failed
-    throw new Error(`Failed to upload ${file.name} after ${maxRetries} attempts: ${lastError?.message || 'Unknown error'}`);
+    throw new Error(
+      `Failed to upload ${file.name} after ${maxRetries} attempts: ${lastError?.message || 'Unknown error'}`,
+    );
   }
 
   // Upload multiple photos with progress tracking and error handling
   async uploadMultiplePhotos(
     files: File[],
-    onProgress?: (progress: { completed: number; total: number; currentFile?: string; errors?: string[] }) => void
+    onProgress?: (progress: {
+      completed: number;
+      total: number;
+      currentFile?: string;
+      errors?: string[];
+    }) => void,
   ): Promise<string[]> {
     const results: string[] = [];
     const errors: string[] = [];
@@ -191,12 +206,15 @@ class OnboardingService {
           completed: i,
           total: files.length,
           currentFile: file.name,
-          errors: errors.length > 0 ? errors : undefined
+          errors: errors.length > 0 ? errors : undefined,
         });
 
         // Validate file before upload
-        if (file.size > 10 * 1024 * 1024) { // 10MB limit
-          throw new Error(`File too large: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB > 10MB)`);
+        if (file.size > 10 * 1024 * 1024) {
+          // 10MB limit
+          throw new Error(
+            `File too large: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB > 10MB)`,
+          );
         }
 
         if (!file.type.startsWith('image/')) {
@@ -223,7 +241,7 @@ class OnboardingService {
     onProgress?.({
       completed: files.length,
       total: files.length,
-      errors: errors.length > 0 ? errors : undefined
+      errors: errors.length > 0 ? errors : undefined,
     });
 
     return results;
@@ -239,7 +257,7 @@ class OnboardingService {
 
         // Create file from blob
         return new File([blob], `photo-${index + 1}.jpg`, { type: 'image/jpeg' });
-      })
+      }),
     );
 
     return this.uploadMultiplePhotos(files);
@@ -269,7 +287,7 @@ class OnboardingService {
 
   // Clear all onboarding data
   clearAllSteps() {
-    ['basics', 'photos', 'about', 'preferences', 'location'].forEach(step => {
+    ['basics', 'photos', 'about', 'preferences', 'location'].forEach((step) => {
       sessionStorage.removeItem(`onboarding_${step}`);
     });
   }
@@ -296,7 +314,9 @@ class OnboardingService {
           try {
             photoUrls = await this.uploadPhotosFromDataUrls(allData.photos.photos);
           } catch (e: any) {
-            console.warn(`⚠️ Photo upload failed, falling back to inline data URLs: ${e?.message || e}`);
+            console.warn(
+              `⚠️ Photo upload failed, falling back to inline data URLs: ${e?.message || e}`,
+            );
             photoUrls = allData.photos.photos; // Fallback for E2E/dev to keep flow unblocked
           }
         }
@@ -316,7 +336,6 @@ class OnboardingService {
       };
 
       // Temporarily disabled GraphQL calls for testing
-
 
       // Persist to backend GraphQL
       await client.mutate({
@@ -339,9 +358,13 @@ class OnboardingService {
           context: { fetchOptions: { credentials: 'include' } },
         });
 
-	      // Send welcome email (best-effort)
-	      try { await client.mutate({ mutation: SEND_WELCOME, context: { fetchOptions: { credentials: 'include' } } }); } catch {}
-
+        // Send welcome email (best-effort)
+        try {
+          await client.mutate({
+            mutation: SEND_WELCOME,
+            context: { fetchOptions: { credentials: 'include' } },
+          });
+        } catch {}
       }
 
       // Clear onboarding data after successful completion
@@ -374,7 +397,7 @@ class OnboardingService {
           enableHighAccuracy: true,
           timeout: 10000,
           maximumAge: 300000, // 5 minutes
-        }
+        },
       );
     });
   }
@@ -397,10 +420,9 @@ class OnboardingService {
   validatePhotos(data: OnboardingPhotos): string[] {
     const errors: string[] = [];
 
-    // Temporarily disabled for testing
-    // if (!data.photos || data.photos.length < 2) {
-    //   errors.push('At least 2 photos are required');
-    // }
+    if (!data.photos || data.photos.length < 2) {
+      errors.push('At least 2 photos are required');
+    }
 
     if (data.photos && data.photos.length > 9) {
       errors.push('Maximum 9 photos allowed');
@@ -412,15 +434,13 @@ class OnboardingService {
   validateAbout(data: OnboardingAbout): string[] {
     const errors: string[] = [];
 
-    // Temporarily disabled for testing
-    // if (!data.bio || data.bio.trim().length < 10) {
-    //   errors.push('Bio must be at least 10 characters');
-    // }
+    if (!data.bio || data.bio.trim().length < 10) {
+      errors.push('Bio must be at least 10 characters');
+    }
 
-    // Temporarily disabled for testing
-    // if (!data.interests || data.interests.length < 3) {
-    //   errors.push('Please select at least 3 interests');
-    // }
+    if (!data.interests || data.interests.length < 3) {
+      errors.push('Please select at least 3 interests');
+    }
 
     return errors;
   }
@@ -428,22 +448,21 @@ class OnboardingService {
   validatePreferences(data: OnboardingPreferences): string[] {
     const errors: string[] = [];
 
-    // Temporarily disabled for testing
-    // if (data.minAge < 18 || data.minAge > 99) {
-    //   errors.push('Minimum age must be between 18 and 99');
-    // }
+    if (data.minAge < 18 || data.minAge > 99) {
+      errors.push('Minimum age must be between 18 and 99');
+    }
 
-    // if (data.maxAge < 18 || data.maxAge > 99) {
-    //   errors.push('Maximum age must be between 18 and 99');
-    // }
+    if (data.maxAge < 18 || data.maxAge > 99) {
+      errors.push('Maximum age must be between 18 and 99');
+    }
 
-    // if (data.minAge >= data.maxAge) {
-    //   errors.push('Maximum age must be greater than minimum age');
-    // }
+    if (data.minAge >= data.maxAge) {
+      errors.push('Maximum age must be greater than minimum age');
+    }
 
-    // if (data.distanceKm < 1 || data.distanceKm > 500) {
-    //   errors.push('Distance must be between 1 and 500 km');
-    // }
+    if (data.distanceKm < 1 || data.distanceKm > 500) {
+      errors.push('Distance must be between 1 and 500 km');
+    }
 
     return errors;
   }
