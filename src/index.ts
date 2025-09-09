@@ -760,7 +760,17 @@ async function start() {
             (page - 1) * pageSize,
           ];
 
-          candidates = await prisma.$queryRawUnsafe(distanceQuery, ...params);
+          try {
+            candidates = await prisma.$queryRawUnsafe(distanceQuery, ...params);
+          } catch (err) {
+            console.error('PostGIS discovery query failed, falling back to non-geo discovery', err);
+            candidates = await prisma.profile.findMany({
+              where: baseWhere,
+              take: pageSize,
+              skip: (page - 1) * pageSize,
+              orderBy: [{ user: { createdAt: 'desc' } }, { userId: 'asc' }],
+            });
+          }
         } else {
           // Fallback to regular query without location filtering
           candidates = await prisma.profile.findMany({
