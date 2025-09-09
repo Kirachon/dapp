@@ -135,7 +135,7 @@ export function initSuperTokens() {
       Session.init({
         cookieSecure: process.env.NODE_ENV === 'production',
         // Use 'none' in development to allow cross-site cookies between http://localhost:3000 and http://localhost:8080
-        cookieSameSite: 'none',
+        cookieSameSite: process.env.NODE_ENV === 'production' ? 'lax' : 'none',
         sessionExpiredStatusCode: 401,
         antiCsrf: process.env.NODE_ENV === 'production' ? 'VIA_TOKEN' : 'NONE',
       }),
