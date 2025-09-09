@@ -1,0 +1,21 @@
+# Ignore generated, build, and external directories for ESLint
+node_modules/
+dist/
+build/
+.next/
+frontend/.next/
+coverage/
+playwright-report/
+frontend/playwright-report/
+test-results/
+frontend/test-results/
+
+# Generated code (type-safe outputs)
+src/graphql/__generated__/
+frontend/src/__generated__/
+
+# Misc caches
+.turbo/
+.esbuild/
+.cache/
+

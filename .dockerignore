@@ -6,3 +6,46 @@ dist
 .env
 Dockerfile
 
+
+# Expanded ignore for lean Docker context
+# VCS / metadata
+.github
+.gitattributes
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Dependencies & builds
+frontend/node_modules
+build
+.next
+frontend/.next
+coverage
+
+# Test artifacts
+playwright-report
+test-results
+frontend/playwright-report
+frontend/test-results
+
+# IDE/editor/OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+*.log
+
+# Local-only directories
+.augment
+.bmad-core
+.claude
+wireframes
+
+# Compose and local Docker files (not needed in context)
+docker-compose*.yml
+Dockerfile.dev
+Dockerfile.prod
+frontend/Dockerfile.dev
+frontend/Dockerfile.prod

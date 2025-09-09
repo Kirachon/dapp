@@ -162,9 +162,6 @@ local.config.*
 *.swo
 *~
 
-# Docker
-.dockerignore
-
 # Deployment
 .vercel/
 .netlify/
@@ -180,3 +177,15 @@ local.config.*
 
 # Optional: Uncomment if using different package manager
 # package-lock.json
+
+
+# Generated code
+src/graphql/__generated__/
+frontend/src/__generated__/
+
+# Cache/compiled outputs
+.turbo/
+.esbuild/
+
+# Playwright artifacts (reports/results are not tracked)
+playwright/.cache/
