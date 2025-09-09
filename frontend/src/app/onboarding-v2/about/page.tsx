@@ -25,7 +25,7 @@ const INTERESTS = [
   { id: 'yoga', label: '🧘‍♀️ Yoga', category: 'lifestyle' },
   { id: 'pets', label: '🐕 Pets', category: 'lifestyle' },
   { id: 'wine', label: '🍷 Wine', category: 'lifestyle' },
-  { id: 'coffee', label: '☕ Coffee', category: 'lifestyle' }
+  { id: 'coffee', label: '☕ Coffee', category: 'lifestyle' },
 ];
 
 const LIFESTYLE_OPTIONS = {
@@ -33,21 +33,21 @@ const LIFESTYLE_OPTIONS = {
     { value: 'never', label: 'Never' },
     { value: 'rarely', label: 'Rarely' },
     { value: 'socially', label: 'Socially' },
-    { value: 'regularly', label: 'Regularly' }
+    { value: 'regularly', label: 'Regularly' },
   ],
   smoking: [
     { value: 'never', label: 'Never' },
     { value: 'rarely', label: 'Rarely' },
     { value: 'socially', label: 'Socially' },
-    { value: 'regularly', label: 'Regularly' }
+    { value: 'regularly', label: 'Regularly' },
   ],
   exercise: [
     { value: 'never', label: 'Never' },
     { value: 'rarely', label: 'Rarely' },
     { value: 'sometimes', label: 'Sometimes' },
     { value: 'regularly', label: 'Regularly' },
-    { value: 'daily', label: 'Daily' }
-  ]
+    { value: 'daily', label: 'Daily' },
+  ],
 };
 
 const EDUCATION_OPTIONS = [
@@ -57,7 +57,7 @@ const EDUCATION_OPTIONS = [
   { value: 'masters', label: "Master's Degree" },
   { value: 'phd', label: 'PhD' },
   { value: 'trade-school', label: 'Trade School' },
-  { value: 'other', label: 'Other' }
+  { value: 'other', label: 'Other' },
 ];
 
 export default function OnboardingAboutPage() {
@@ -66,7 +66,7 @@ export default function OnboardingAboutPage() {
   const [lifestyle, setLifestyle] = useState({
     drinking: '',
     smoking: '',
-    exercise: ''
+    exercise: '',
   });
   const [education, setEducation] = useState('');
   const [loading, setLoading] = useState(false);
@@ -109,9 +109,9 @@ export default function OnboardingAboutPage() {
   }, [isAuthenticated, router]);
 
   const handleInterestToggle = (interestId: string) => {
-    setSelectedInterests(prev => {
+    setSelectedInterests((prev) => {
       if (prev.includes(interestId)) {
-        return prev.filter(id => id !== interestId);
+        return prev.filter((id) => id !== interestId);
       } else if (prev.length < 10) {
         return [...prev, interestId];
       }
@@ -120,9 +120,9 @@ export default function OnboardingAboutPage() {
   };
 
   const handleLifestyleChange = (category: keyof typeof lifestyle, value: string) => {
-    setLifestyle(prev => ({
+    setLifestyle((prev) => ({
       ...prev,
-      [category]: prev[category] === value ? '' : value
+      [category]: prev[category] === value ? '' : value,
     }));
   };
 
@@ -147,7 +147,7 @@ export default function OnboardingAboutPage() {
       const aboutData: OnboardingAbout = {
         bio: bio.trim(),
         interests: selectedInterests,
-        education: education || undefined
+        education: education || undefined,
       };
 
       // Validate with service
@@ -162,7 +162,7 @@ export default function OnboardingAboutPage() {
 
       // Persist progress and navigate to next step
       await markOnboardingStep('about');
-      router.push('/onboarding/preferences');
+      router.push('/onboarding-v2/preferences');
     } catch (error) {
       console.error('Error saving about data:', error);
       alert('Failed to save information. Please try again.');
@@ -184,7 +184,12 @@ export default function OnboardingAboutPage() {
           className="flex items-center gap-2 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M15 19l-7-7 7-7"
+            />
           </svg>
           Back
         </button>
@@ -194,7 +199,10 @@ export default function OnboardingAboutPage() {
       {/* Progress Bar */}
       <div className="px-4 mb-8">
         <div className="w-full bg-[var(--color-gray-200)] rounded-full h-2">
-          <div className="bg-[var(--color-primary-500)] h-2 rounded-full transition-all duration-300" style={{ width: '60%' }}></div>
+          <div
+            className="bg-[var(--color-primary-500)] h-2 rounded-full transition-all duration-300"
+            style={{ width: '60%' }}
+          ></div>
         </div>
       </div>
 
@@ -247,7 +255,9 @@ export default function OnboardingAboutPage() {
                         ? 'border-[var(--color-primary-500)] bg-[var(--color-primary-50)] text-[var(--color-primary-700)]'
                         : 'border-[var(--color-border)] text-[var(--color-text-secondary)] hover:border-[var(--color-gray-300)]'
                     }`}
-                    disabled={!selectedInterests.includes(interest.id) && selectedInterests.length >= 10}
+                    disabled={
+                      !selectedInterests.includes(interest.id) && selectedInterests.length >= 10
+                    }
                   >
                     {interest.label}
                   </button>
@@ -263,7 +273,7 @@ export default function OnboardingAboutPage() {
               <h3 className="text-sm font-medium text-[var(--color-text-primary)]">
                 Lifestyle (Optional)
               </h3>
-              
+
               {Object.entries(LIFESTYLE_OPTIONS).map(([category, options]) => (
                 <div key={category}>
                   <label className="block text-sm text-[var(--color-text-secondary)] mb-2 capitalize">
@@ -274,7 +284,9 @@ export default function OnboardingAboutPage() {
                       <button
                         key={option.value}
                         type="button"
-                        onClick={() => handleLifestyleChange(category as keyof typeof lifestyle, option.value)}
+                        onClick={() =>
+                          handleLifestyleChange(category as keyof typeof lifestyle, option.value)
+                        }
                         className={`px-3 py-2 rounded-lg border-2 text-sm font-medium transition-all ${
                           lifestyle[category as keyof typeof lifestyle] === option.value
                             ? 'border-[var(--color-primary-500)] bg-[var(--color-primary-50)] text-[var(--color-primary-700)]'
@@ -313,11 +325,7 @@ export default function OnboardingAboutPage() {
             </div>
 
             <div className="pt-4">
-              <Button
-                type="submit"
-                loading={loading}
-                className="w-full"
-              >
+              <Button type="submit" loading={loading} className="w-full">
                 Continue
               </Button>
             </div>
