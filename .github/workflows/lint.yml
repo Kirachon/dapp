@@ -1,0 +1,28 @@
+name: Lint & Type Check
+
+on:
+  pull_request:
+  push:
+    branches: ['**']
+
+jobs:
+  lint-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install root deps
+        run: npm ci
+      - name: Lint backend + frontend
+        run: npm run lint
+      - name: Type-check backend
+        run: npm run type-check
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+      - name: Frontend lint
+        working-directory: frontend
+        run: npm run lint

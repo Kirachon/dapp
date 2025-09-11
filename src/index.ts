@@ -10,6 +10,7 @@ import rateLimit from '@fastify/rate-limit';
 import cookie from '@fastify/cookie';
 import formbody from '@fastify/formbody';
 import multipart from '@fastify/multipart';
+import { notifyModerationDecision } from './services/notify';
 import { ApolloServer } from '@apollo/server';
 import { fastifyApolloDrainPlugin, fastifyApolloHandler } from '@as-integrations/fastify';
 import { makeExecutableSchema } from '@graphql-tools/schema';
@@ -1035,6 +1036,10 @@ async function start() {
             offset?: number;
             status?: string;
             priority?: string;
+            startDate?: string;
+            endDate?: string;
+            type?: string;
+            reporterEmail?: string;
           },
         ) => {
           try {
@@ -1042,11 +1047,16 @@ async function start() {
             const offset = Math.max(0, args.offset ?? 0);
 
             const where: any = {};
-            if (args.status) {
-              where.status = args.status;
+            if (args.status) where.status = args.status;
+            if (args.priority) where.priority = args.priority;
+            if (args.type) where.type = args.type;
+            if (args.startDate || args.endDate) {
+              where.submittedAt = {};
+              if (args.startDate) where.submittedAt.gte = new Date(args.startDate);
+              if (args.endDate) where.submittedAt.lte = new Date(args.endDate);
             }
-            if (args.priority) {
-              where.priority = args.priority;
+            if (args.reporterEmail) {
+              where.reportedBy = { email: { contains: args.reporterEmail, mode: 'insensitive' } };
             }
 
             const [items, totalCount] = await Promise.all([
@@ -1055,6 +1065,8 @@ async function start() {
                 include: {
                   user: { include: { profile: true } },
                   reportedBy: { include: { profile: true } },
+                  attachments: true,
+                  audits: { orderBy: { createdAt: 'desc' }, take: 5 },
                 },
                 orderBy: [{ priority: 'desc' }, { submittedAt: 'desc' }],
                 take: limit,
@@ -1085,6 +1097,19 @@ async function start() {
               reportedBy: item.reportedBy?.profile?.name || 'Anonymous',
               reviewedAt: item.reviewedAt,
               reviewedBy: item.reviewedBy,
+              attachments: item.attachments?.map((a) => ({
+                id: a.id,
+                type: a.type,
+                url: a.url,
+                createdAt: a.createdAt,
+              })),
+              audits: item.audits?.map((a) => ({
+                id: a.id,
+                action: a.action,
+                reason: a.reason,
+                reviewerId: a.reviewerId,
+                createdAt: a.createdAt,
+              })),
             }));
 
             return {
@@ -1911,16 +1936,104 @@ async function start() {
         ) => {
           const status = action === 'approve' ? 'APPROVED' : 'REJECTED';
 
-          await prisma.moderationItem.update({
-            where: { id: itemId },
-            data: {
-              status,
-              reviewedAt: new Date(),
-              reviewedBy: 'admin',
-              reason: reason || `Action: ${action}`,
-            },
-          });
+          await prisma.$transaction([
+            prisma.moderationItem.update({
+              where: { id: itemId },
+              data: {
+                status,
+                reviewedAt: new Date(),
+                reviewedBy: String((arguments as any)[2]?.user?.id || 'admin'),
+                reason: reason || `Action: ${action}`,
+              },
+            }),
+            prisma.moderationAudit.create({
+              data: {
+                itemId,
+                reviewerId: (arguments as any)[2]?.user?.id || null,
+                action,
+                reason,
+              },
+            }),
+          ]);
 
+          // Dev/test notification of moderation decision (no-op in production)
+          try {
+            const rec = await prisma.moderationItem.findUnique({
+              where: { id: itemId },
+              select: { user: { select: { email: true } } },
+            });
+            const email = rec?.user?.email;
+            if (email) {
+              await notifyModerationDecision(email, itemId, action, reason);
+            }
+          } catch {}
+
+          return true;
+        },
+      ),
+
+      adminModerationBulkAction: requireAdmin(
+        async (
+          _: unknown,
+          {
+            itemIds,
+            action,
+            reason,
+          }: {
+            itemIds: string[];
+            action: string;
+            reason?: string;
+          },
+          ctx: any,
+        ) => {
+          const status = action === 'approve' ? 'APPROVED' : 'REJECTED';
+          await prisma.$transaction(
+            itemIds.flatMap((itemId) => [
+              prisma.moderationItem.update({
+                where: { id: itemId },
+                data: {
+                  status,
+                  reviewedAt: new Date(),
+                  reviewedBy: String(ctx?.user?.id || 'admin'),
+                  reason: reason || `Action: ${action}`,
+                },
+              }),
+              prisma.moderationAudit.create({
+                data: {
+                  itemId,
+                  reviewerId: ctx?.user?.id || null,
+                  action,
+                  reason,
+                },
+              }),
+            ]),
+          );
+
+          // Dev/test notifications for each affected item (no-op in production)
+          try {
+            const items = await prisma.moderationItem.findMany({
+              where: { id: { in: itemIds } },
+              select: { id: true, user: { select: { email: true } } },
+            });
+            for (const it of items) {
+              if (it.user?.email) {
+                await notifyModerationDecision(it.user.email, it.id, action, reason);
+              }
+            }
+          } catch {}
+
+          return true;
+        },
+      ),
+
+      adminAddModerationAttachment: requireAdmin(
+        async (
+          _: unknown,
+          { itemId, type, url }: { itemId: string; type: string; url: string },
+        ) => {
+          await prisma.moderationAttachment.create({
+            data: { itemId, type, url },
+          });
           return true;
         },
       ),
@@ -2061,7 +2174,27 @@ async function start() {
 
   const apollo = new ApolloServer({
     schema,
-    plugins: [fastifyApolloDrainPlugin(server)],
+    plugins: [
+      fastifyApolloDrainPlugin(server),
+      {
+        async requestDidStart(requestContext) {
+          const start = Date.now();
+          const query = requestContext.request.query || '';
+          const isMutation = /^\s*mutation\b/.test(query);
+          const opType = isMutation ? 'mutation' : 'query';
+          const opName = requestContext.request.operationName || 'anonymous';
+          const correlationId = (requestContext.contextValue as any)?.request?.headers?.[
+            'x-correlation-id'
+          ] as string | undefined;
+          return {
+            async willSendResponse() {
+              const duration = Date.now() - start;
+              logger.graphql(opName, opType as any, duration, { correlationId });
+            },
+          };
+        },
+      },
+    ],
   });
   await apollo.start();
 
