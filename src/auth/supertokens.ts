@@ -133,9 +133,12 @@ export function initSuperTokens() {
         },
       }),
       Session.init({
+        // Align with frontend: use cookies for token transfer in dev and prod
+        tokenTransferMethod: 'cookie',
         cookieSecure: process.env.NODE_ENV === 'production',
-        // Use 'none' in development to allow cross-site cookies between http://localhost:3000 and http://localhost:8080
-        cookieSameSite: process.env.NODE_ENV === 'production' ? 'lax' : 'none',
+        // In development, use SameSite=Lax so Chromium accepts non-secure cookies on localhost.
+        // Ports differ but are same-site on localhost, so Lax is sufficient for API requests with credentials: 'include'.
+        cookieSameSite: process.env.NODE_ENV === 'production' ? 'lax' : 'lax',
         sessionExpiredStatusCode: 401,
         antiCsrf: process.env.NODE_ENV === 'production' ? 'VIA_TOKEN' : 'NONE',
       }),

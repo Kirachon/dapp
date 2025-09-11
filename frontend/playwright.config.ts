@@ -8,6 +8,8 @@ console.log(`🔧 Playwright baseURL: ${resolvedBaseURL}`);
 
 export default defineConfig({
   testDir: './tests',
+  /* Global setup: ensure services are up before tests */
+  globalSetup: './tests/global-setup.ts',
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
@@ -100,43 +102,47 @@ export default defineConfig({
     },
 
     // Only run Firefox and WebKit in CI or when explicitly requested
-    ...(process.env.CI || process.env.ALL_BROWSERS ? [
-      {
-        name: 'firefox',
-        use: {
-          ...devices['Desktop Firefox'],
-          headless: !!process.env.CI,
-          viewport: { width: 1280, height: 720 },
-        },
-      },
+    ...(process.env.CI || process.env.ALL_BROWSERS
+      ? [
+          {
+            name: 'firefox',
+            use: {
+              ...devices['Desktop Firefox'],
+              headless: !!process.env.CI,
+              viewport: { width: 1280, height: 720 },
+            },
+          },
 
-      {
-        name: 'webkit',
-        use: {
-          ...devices['Desktop Safari'],
-          headless: !!process.env.CI,
-          viewport: { width: 1280, height: 720 },
-        },
-      },
-    ] : []),
+          {
+            name: 'webkit',
+            use: {
+              ...devices['Desktop Safari'],
+              headless: !!process.env.CI,
+              viewport: { width: 1280, height: 720 },
+            },
+          },
+        ]
+      : []),
 
     // Mobile tests only in CI or when explicitly requested
-    ...(process.env.CI || process.env.MOBILE_TESTS ? [
-      {
-        name: 'Mobile Chrome',
-        use: {
-          ...devices['Pixel 5'],
-          headless: !!process.env.CI,
-        },
-      },
-      {
-        name: 'Mobile Safari',
-        use: {
-          ...devices['iPhone 12'],
-          headless: !!process.env.CI,
-        },
-      },
-    ] : []),
+    ...(process.env.CI || process.env.MOBILE_TESTS
+      ? [
+          {
+            name: 'Mobile Chrome',
+            use: {
+              ...devices['Pixel 5'],
+              headless: !!process.env.CI,
+            },
+          },
+          {
+            name: 'Mobile Safari',
+            use: {
+              ...devices['iPhone 12'],
+              headless: !!process.env.CI,
+            },
+          },
+        ]
+      : []),
 
     /* Test against branded browsers. */
     // {
