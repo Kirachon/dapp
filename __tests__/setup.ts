@@ -9,6 +9,7 @@ jest.mock('@prisma/client', () => ({
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
+      createMany: jest.fn(),
     },
     profile: {
       findUnique: jest.fn(),
@@ -27,21 +28,25 @@ jest.mock('@prisma/client', () => ({
       findUnique: jest.fn(),
       findMany: jest.fn(),
       create: jest.fn(),
+      findFirst: jest.fn(),
     },
     conversation: {
       findUnique: jest.fn(),
       findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      upsert: jest.fn(),
     },
     message: {
       findUnique: jest.fn(),
       findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
     },
     $disconnect: jest.fn(),
     $connect: jest.fn(),
+    $transaction: jest.fn(),
   })),
 }));
 
@@ -87,7 +92,6 @@ jest.mock('socket.io', () => ({
 
 // Global test utilities
 declare global {
-  // eslint-disable-next-line no-var
   var mockPrisma: PrismaClient;
 }
 
@@ -120,12 +124,10 @@ export const createMockProfile = (overrides = {}) => ({
     smoking: 'never',
     exercise: 'regularly',
   },
-  prompts: [
-    { question: 'My ideal Sunday involves...', answer: 'Relaxing and coding' }
-  ],
+  prompts: [{ question: 'My ideal Sunday involves...', answer: 'Relaxing and coding' }],
   location: {
     latitude: 40.7128,
-    longitude: -74.0060,
+    longitude: -74.006,
   },
   preferences: {
     minAge: 22,

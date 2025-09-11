@@ -12,17 +12,17 @@ services:
       POSTGRES_DB: dating
       POSTGRES_USER: app
       POSTGRES_PASSWORD: app
-      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+      POSTGRES_INITDB_ARGS: '--encoding=UTF-8 --lc-collate=C --lc-ctype=C'
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     ports:
-      - "5432:5432"
+      - '5433:5432'
     networks:
       - loveconnect-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d dating"]
+      test: ['CMD-SHELL', 'pg_isready -U app -d dating']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -32,14 +32,14 @@ services:
   redis:
     image: redis:7-alpine
     container_name: loveconnect-redis
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    command: ['redis-server', '--save', '', '--appendonly', 'no']
     ports:
-      - "6379:6379"
+      - '6379:6379'
     networks:
       - loveconnect-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
       timeout: 5s
       retries: 3
@@ -52,16 +52,16 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "3567:3567"
+      - '3567:3567'
     environment:
-      POSTGRESQL_CONNECTION_URI: "postgresql://app:app@loveconnect-postgres:5432/dating"
-      POSTGRESQL_TABLE_NAMES_PREFIX: "st_"
-      SUPERTOKENS_PORT: "3567"
+      POSTGRESQL_CONNECTION_URI: 'postgresql://app:app@loveconnect-postgres:5432/dating'
+      POSTGRESQL_TABLE_NAMES_PREFIX: 'st_'
+      SUPERTOKENS_PORT: '3567'
     networks:
       - loveconnect-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3567/hello"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:3567/hello']
       interval: 30s
       timeout: 10s
       retries: 5
@@ -78,13 +78,13 @@ services:
     volumes:
       - minio_data:/data
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - '9000:9000'
+      - '9001:9001'
     networks:
       - loveconnect-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
       interval: 30s
       timeout: 20s
       retries: 3
@@ -94,8 +94,8 @@ services:
     image: mailhog/mailhog:latest
     container_name: loveconnect-mailhog
     ports:
-      - "1025:1025" # SMTP
-      - "8025:8025" # Web UI
+      - '1025:1025' # SMTP
+      - '8025:8025' # Web UI
     networks:
       - loveconnect-network
     restart: unless-stopped
@@ -120,7 +120,7 @@ services:
       - FRONTEND_URL=http://localhost:3000
       - BACKEND_URL=http://localhost:8080
     ports:
-      - "8080:8080"
+      - '8080:8080'
     depends_on:
       postgres:
         condition: service_healthy
@@ -135,6 +135,8 @@ services:
       # Only mount essential files to avoid Windows permission issues
       - ./src:/app/src:cached
       - ./prisma:/app/prisma:cached
+      - ./tsconfig.api.json:/app/tsconfig.api.json:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
       - /app/node_modules
 
   # Frontend Next.js Service
@@ -152,7 +154,7 @@ services:
       - WATCHPACK_POLLING=true
       - CHOKIDAR_USEPOLLING=true
     ports:
-      - "3000:3000"
+      - '3000:3000'
     depends_on:
       - api
     networks:
@@ -187,6 +189,3 @@ volumes:
 networks:
   loveconnect-network:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16

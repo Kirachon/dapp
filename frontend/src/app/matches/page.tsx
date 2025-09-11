@@ -24,7 +24,7 @@ const GET_MATCHES_QUERY = gql`
 `;
 
 const GET_CONVERSATIONS_QUERY = gql`
-  query GetMyConversations($page: Int, $pageSize: Int) {
+  query GetConversationsList($page: Int, $pageSize: Int) {
     myConversations(page: $page, pageSize: $pageSize) {
       id
       matchId
@@ -84,7 +84,7 @@ export default function MatchesPage() {
     data: matchesData,
     loading: matchesLoading,
     error: matchesError,
-    refetch: refetchMatches
+    refetch: refetchMatches,
   } = useQuery(GET_MATCHES_QUERY, {
     skip: !isAuthenticated || !hasProfile,
     fetchPolicy: 'cache-and-network',
@@ -94,15 +94,15 @@ export default function MatchesPage() {
     variables: {
       status: activeTab === 'all' ? undefined : activeTab.toUpperCase(),
       page: 1,
-      pageSize: 50
-    }
+      pageSize: 50,
+    },
   });
 
   const {
     data: conversationsData,
     loading: conversationsLoading,
     error: conversationsError,
-    refetch: refetchConversations
+    refetch: refetchConversations,
   } = useQuery(GET_CONVERSATIONS_QUERY, {
     skip: !isAuthenticated || !hasProfile,
     fetchPolicy: 'cache-and-network',
@@ -110,8 +110,8 @@ export default function MatchesPage() {
     notifyOnNetworkStatusChange: true,
     variables: {
       page: 1,
-      pageSize: 50
-    }
+      pageSize: 50,
+    },
   });
 
   // Redirect if not authenticated or no profile
@@ -127,10 +127,11 @@ export default function MatchesPage() {
 
   // Get real matches data from GraphQL
   const matches = matchesData?.myMatches || [];
-  const conversations: Conversation[] = conversationsData?.conversations || [];
+  const conversations: Conversation[] = conversationsData?.myConversations || [];
 
   const filteredMatches = matches.filter((match: any) => {
-    const matchesSearch = match.otherUser?.name?.toLowerCase().includes(searchQuery.toLowerCase()) || false;
+    const matchesSearch =
+      match.otherUser?.name?.toLowerCase().includes(searchQuery.toLowerCase()) || false;
     const matchesTab = activeTab === 'all' || match.status?.toLowerCase() === activeTab;
     return matchesSearch && matchesTab;
   });
@@ -145,7 +146,10 @@ export default function MatchesPage() {
 
   // Professional loading skeleton component
   const MatchesLoadingSkeleton = () => (
-    <div className="min-h-screen bg-gradient-to-br from-[#667eea] to-[#764ba2] relative overflow-hidden" data-testid="matches-loading-skeleton">
+    <div
+      className="min-h-screen bg-gradient-to-br from-[#667eea] to-[#764ba2] relative overflow-hidden"
+      data-testid="matches-loading-skeleton"
+    >
       {/* Background Elements */}
       <div className="absolute inset-0 opacity-5">
         <div className="absolute top-10 left-10 text-6xl animate-pulse">💕</div>
@@ -185,7 +189,11 @@ export default function MatchesPage() {
         <div className="max-w-sm mx-auto">
           <div className="grid grid-cols-2 gap-4">
             {[...Array(6)].map((_, i) => (
-              <div key={i} className="glass-card rounded-2xl overflow-hidden backdrop-blur-lg border border-white/30" data-testid="skeleton-card">
+              <div
+                key={i}
+                className="glass-card rounded-2xl overflow-hidden backdrop-blur-lg border border-white/30"
+                data-testid="skeleton-card"
+              >
                 <div className="aspect-[3/4] relative">
                   <div className="w-full h-full bg-white/10 animate-pulse"></div>
 
@@ -213,29 +221,30 @@ export default function MatchesPage() {
   }
 
   // Comprehensive error handling component
-  const ErrorMessage = ({ error, onRetry }: { error: any, onRetry: () => void }) => {
+  const ErrorMessage = ({ error, onRetry }: { error: any; onRetry: () => void }) => {
     const getErrorMessage = (error: any) => {
       if (error?.networkError) {
-        return "Unable to connect to the server. Please check your internet connection and try again.";
+        return 'Unable to connect to the server. Please check your internet connection and try again.';
       }
       if (error?.graphQLErrors?.length > 0) {
         const graphQLError = error.graphQLErrors[0];
         if (graphQLError.extensions?.code === 'UNAUTHENTICATED') {
-          return "Your session has expired. Please sign in again.";
+          return 'Your session has expired. Please sign in again.';
         }
         if (graphQLError.extensions?.code === 'FORBIDDEN') {
           return "You don't have permission to view matches. Please complete your profile.";
         }
-        return graphQLError.message || "Something went wrong with your request.";
+        return graphQLError.message || 'Something went wrong with your request.';
       }
-      return "Something went wrong. Please try again.";
+      return 'Something went wrong. Please try again.';
     };
 
     const getErrorIcon = (error: any) => {
-      if (error?.networkError) return "📡";
-      if (error?.graphQLErrors?.some((e: any) => e.extensions?.code === 'UNAUTHENTICATED')) return "🔐";
-      if (error?.graphQLErrors?.some((e: any) => e.extensions?.code === 'FORBIDDEN')) return "⛔";
-      return "⚠️";
+      if (error?.networkError) return '📡';
+      if (error?.graphQLErrors?.some((e: any) => e.extensions?.code === 'UNAUTHENTICATED'))
+        return '🔐';
+      if (error?.graphQLErrors?.some((e: any) => e.extensions?.code === 'FORBIDDEN')) return '⛔';
+      return '⚠️';
     };
 
     return (
@@ -247,12 +256,8 @@ export default function MatchesPage() {
         >
           <div className="glass-card p-8 rounded-3xl backdrop-blur-lg border border-white/30">
             <div className="text-6xl mb-4">{getErrorIcon(error)}</div>
-            <h3 className="text-xl font-semibold text-white mb-3">
-              Oops! Something went wrong
-            </h3>
-            <p className="text-white/80 mb-6 leading-relaxed">
-              {getErrorMessage(error)}
-            </p>
+            <h3 className="text-xl font-semibold text-white mb-3">Oops! Something went wrong</h3>
+            <p className="text-white/80 mb-6 leading-relaxed">{getErrorMessage(error)}</p>
             <div className="flex flex-col gap-3">
               <motion.button
                 onClick={onRetry}
@@ -289,13 +294,13 @@ export default function MatchesPage() {
     const getEmptyStateContent = () => {
       if (searchQuery) {
         return {
-          icon: "🔍",
-          title: "No matches found",
-          message: "Try adjusting your search terms or clear the search to see all matches.",
+          icon: '🔍',
+          title: 'No matches found',
+          message: 'Try adjusting your search terms or clear the search to see all matches.',
           action: {
-            text: "Clear Search",
-            onClick: () => setSearchQuery('')
-          }
+            text: 'Clear Search',
+            onClick: () => setSearchQuery(''),
+          },
         };
       }
 
@@ -303,33 +308,34 @@ export default function MatchesPage() {
       const totalMatches = matches.length;
       if (totalMatches === 0) {
         return {
-          icon: "💕",
-          title: "Ready to find love?",
-          message: "Start discovering amazing people in your area! Swipe right on profiles you like to create matches.",
+          icon: '💕',
+          title: 'Ready to find love?',
+          message:
+            'Start discovering amazing people in your area! Swipe right on profiles you like to create matches.',
           action: {
-            text: "Start Discovering",
-            onClick: () => router.push('/discover')
+            text: 'Start Discovering',
+            onClick: () => router.push('/discover'),
           },
           secondaryAction: {
-            text: "Update Preferences",
-            onClick: () => router.push('/filters')
-          }
+            text: 'Update Preferences',
+            onClick: () => router.push('/filters'),
+          },
         };
       }
 
       // User has matches but filtered results are empty
       return {
-        icon: "🎯",
-        title: "No matches in this category",
+        icon: '🎯',
+        title: 'No matches in this category',
         message: "Try switching to 'All' to see your complete match list, or discover new people.",
         action: {
-          text: "View All Matches",
-          onClick: () => setActiveTab('all')
+          text: 'View All Matches',
+          onClick: () => setActiveTab('all'),
         },
         secondaryAction: {
-          text: "Discover More",
-          onClick: () => router.push('/discover')
-        }
+          text: 'Discover More',
+          onClick: () => router.push('/discover'),
+        },
       };
     };
 
@@ -352,24 +358,20 @@ export default function MatchesPage() {
             className="text-6xl mb-6"
             animate={{
               scale: [1, 1.1, 1],
-              rotate: [0, 5, -5, 0]
+              rotate: [0, 5, -5, 0],
             }}
             transition={{
               duration: 2,
               repeat: Infinity,
-              repeatType: "reverse"
+              repeatType: 'reverse',
             }}
           >
             {content.icon}
           </motion.div>
 
-          <h3 className="text-xl font-semibold text-white mb-3">
-            {content.title}
-          </h3>
+          <h3 className="text-xl font-semibold text-white mb-3">{content.title}</h3>
 
-          <p className="text-white/80 mb-8 leading-relaxed">
-            {content.message}
-          </p>
+          <p className="text-white/80 mb-8 leading-relaxed">{content.message}</p>
 
           <div className="space-y-3">
             <motion.button
@@ -426,7 +428,12 @@ export default function MatchesPage() {
             whileTap={{ scale: 0.95 }}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
             </svg>
           </motion.button>
           <motion.button
@@ -437,11 +444,21 @@ export default function MatchesPage() {
           >
             {viewMode === 'grid' ? (
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 6h16M4 10h16M4 14h16M4 18h16"
+                />
               </svg>
             ) : (
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
+                />
               </svg>
             )}
           </motion.button>
@@ -453,8 +470,18 @@ export default function MatchesPage() {
         <div className="max-w-sm mx-auto">
           <div className="glass-card-light p-3 rounded-2xl backdrop-blur-lg border border-white/30">
             <div className="flex items-center gap-3">
-              <svg className="w-5 h-5 text-white/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              <svg
+                className="w-5 h-5 text-white/70"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
               </svg>
               <input
                 type="text"
@@ -475,8 +502,16 @@ export default function MatchesPage() {
             <div className="flex">
               {[
                 { key: 'all', label: 'All', count: matches.length },
-                { key: 'new', label: 'New', count: matches.filter((m: any) => m.status === 'ACTIVE').length },
-                { key: 'recent', label: 'Recent', count: matches.filter((m: any) => m.status === 'ACTIVE').length }
+                {
+                  key: 'new',
+                  label: 'New',
+                  count: matches.filter((m: any) => m.status === 'ACTIVE').length,
+                },
+                {
+                  key: 'recent',
+                  label: 'Recent',
+                  count: matches.filter((m: any) => m.status === 'ACTIVE').length,
+                },
               ].map((tab) => (
                 <button
                   key={tab.key}
@@ -561,7 +596,9 @@ export default function MatchesPage() {
                             {match.otherUser?.name || 'Unknown'}, {match.otherUser?.age || '?'}
                           </h3>
                           <div className="flex items-center gap-1 sm:gap-2 text-white/80 text-xs">
-                            <span className="truncate">{match.createdAt ? formatTimeAgo(match.createdAt) : 'Recently'}</span>
+                            <span className="truncate">
+                              {match.createdAt ? formatTimeAgo(match.createdAt) : 'Recently'}
+                            </span>
                             {/* Add mutual friends if available in the data */}
                             {match.mutualFriends && match.mutualFriends > 0 && (
                               <>
@@ -596,7 +633,7 @@ export default function MatchesPage() {
                         <div className="relative">
                           <div className="w-12 h-12 bg-gradient-to-br from-purple-400 to-pink-400 rounded-full flex items-center justify-center">
                             <span className="text-white font-bold">
-                              {match.user.name.charAt(0)}
+                              {match.otherUser?.name?.charAt(0) || '?'}
                             </span>
                           </div>
                           {match.isOnline && (
@@ -606,7 +643,7 @@ export default function MatchesPage() {
                         <div className="flex-1">
                           <div className="flex items-center justify-between mb-1">
                             <h4 className="font-semibold text-white">
-                              {match.user.name}, {match.user.age}
+                              {match.otherUser?.name}, {match.otherUser?.age}
                             </h4>
                             {match.status === 'new' && (
                               <span className="px-2 py-1 bg-red-500/20 border border-red-400/30 rounded-full text-red-200 text-xs font-medium">

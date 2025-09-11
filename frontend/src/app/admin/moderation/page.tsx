@@ -27,25 +27,32 @@ export default function AdminModerationPage() {
   const router = useRouter();
   const { isAuthenticated, user } = useAuth();
   const [activeTab, setActiveTab] = useState<'PENDING' | 'APPROVED' | 'REJECTED'>('PENDING');
-  const [priorityFilter, setPriorityFilter] = useState<'all' | 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'>('all');
+  const [priorityFilter, setPriorityFilter] = useState<
+    'all' | 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
+  >('all');
   const [currentPage, setCurrentPage] = useState(0);
   const pageSize = 20;
 
   // GraphQL queries and mutations
-  const { data: moderationData, loading: moderationLoading, error: moderationError, refetch } = useQuery(ADMIN_MODERATION, {
+  const {
+    data: moderationData,
+    loading: moderationLoading,
+    error: moderationError,
+    refetch,
+  } = useQuery(ADMIN_MODERATION, {
     variables: {
       limit: pageSize,
       offset: currentPage * pageSize,
       status: activeTab,
-      priority: priorityFilter === 'all' ? null : priorityFilter
+      priority: priorityFilter === 'all' ? null : priorityFilter,
     },
     fetchPolicy: 'cache-and-network',
-    errorPolicy: 'all'
+    errorPolicy: 'all',
   });
 
   const [moderationAction] = useMutation(ADMIN_MODERATION_ACTION, {
     onCompleted: () => refetch(),
-    onError: (error) => console.error('Moderation action error:', error)
+    onError: (error) => console.error('Moderation action error:', error),
   });
 
   const moderationItems = moderationData?.adminModeration?.items || [];
@@ -63,8 +70,8 @@ export default function AdminModerationPage() {
         variables: {
           itemId,
           action,
-          reason: `Admin ${action} action`
-        }
+          reason: `Admin ${action} action`,
+        },
       });
     } catch (error) {
       console.error(`Failed to ${action} item:`, error);
@@ -76,7 +83,7 @@ export default function AdminModerationPage() {
       low: 'bg-blue-500/20 border-blue-400/30 text-blue-200',
       medium: 'bg-yellow-500/20 border-yellow-400/30 text-yellow-200',
       high: 'bg-orange-500/20 border-orange-400/30 text-orange-200',
-      urgent: 'bg-red-500/20 border-red-400/30 text-red-200'
+      urgent: 'bg-red-500/20 border-red-400/30 text-red-200',
     };
     return colors[priority as keyof typeof colors] || colors.low;
   };
@@ -85,7 +92,7 @@ export default function AdminModerationPage() {
     const icons = {
       photo: '📸',
       profile: '👤',
-      message: '💬'
+      message: '💬',
     };
     return icons[type as keyof typeof icons] || '📄';
   };
@@ -93,7 +100,7 @@ export default function AdminModerationPage() {
   const formatTimeAgo = (date: Date) => {
     const now = new Date();
     const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
-    
+
     if (diffInMinutes < 1) return 'Just now';
     if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
     if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`;
@@ -144,8 +151,18 @@ export default function AdminModerationPage() {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
-            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            <svg
+              className="w-5 h-5 text-white"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 19l-7-7 7-7"
+              />
             </svg>
           </motion.button>
           <div>
@@ -154,13 +171,18 @@ export default function AdminModerationPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <motion.button 
+          <motion.button
             className="p-3 rounded-xl glass-card text-white/80 hover:text-white hover:bg-white/15 transition-all"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
             </svg>
           </motion.button>
         </div>
@@ -174,9 +196,24 @@ export default function AdminModerationPage() {
               {/* Status Tabs */}
               <div className="flex gap-1 bg-white/10 rounded-xl p-1">
                 {[
-                  { key: 'pending', label: 'Pending', count: moderationItems.filter((i: ModerationItem) => i.status === 'pending').length },
-                  { key: 'approved', label: 'Approved', count: moderationItems.filter((i: ModerationItem) => i.status === 'approved').length },
-                  { key: 'rejected', label: 'Rejected', count: moderationItems.filter((i: ModerationItem) => i.status === 'rejected').length }
+                  {
+                    key: 'pending',
+                    label: 'Pending',
+                    count: moderationItems.filter((i: ModerationItem) => i.status === 'pending')
+                      .length,
+                  },
+                  {
+                    key: 'approved',
+                    label: 'Approved',
+                    count: moderationItems.filter((i: ModerationItem) => i.status === 'approved')
+                      .length,
+                  },
+                  {
+                    key: 'rejected',
+                    label: 'Rejected',
+                    count: moderationItems.filter((i: ModerationItem) => i.status === 'rejected')
+                      .length,
+                  },
                 ].map((tab) => (
                   <button
                     key={tab.key}
@@ -199,7 +236,7 @@ export default function AdminModerationPage() {
                   { key: 'urgent', label: 'Urgent' },
                   { key: 'high', label: 'High' },
                   { key: 'medium', label: 'Medium' },
-                  { key: 'low', label: 'Low' }
+                  { key: 'low', label: 'Low' },
                 ].map((filter) => (
                   <button
                     key={filter.key}
@@ -222,7 +259,7 @@ export default function AdminModerationPage() {
       {/* Moderation Queue */}
       <div className="flex-1 px-4 pb-8 relative z-10 overflow-y-auto">
         <div className="max-w-6xl mx-auto">
-          {(moderationItems.length === 0) ? (
+          {moderationItems.length === 0 ? (
             <motion.div
               className="text-center py-12"
               initial={{ opacity: 0, y: 20 }}
@@ -233,7 +270,7 @@ export default function AdminModerationPage() {
               <p className="text-white/80">All {activeTab} items have been processed.</p>
             </motion.div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-4" data-testid="moderation-list">
               {moderationItems.map((item: ModerationItem, index: number) => (
                 <motion.div
                   key={item.id}
@@ -241,6 +278,7 @@ export default function AdminModerationPage() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.1 }}
+                  data-testid="moderation-item"
                 >
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center gap-3">
@@ -248,7 +286,9 @@ export default function AdminModerationPage() {
                       <div>
                         <div className="flex items-center gap-2 mb-1">
                           <h3 className="text-white font-semibold">{item.user.name}</h3>
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getPriorityColor(item.priority)}`}>
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-medium border ${getPriorityColor(item.priority)}`}
+                          >
                             {item.priority.toUpperCase()}
                           </span>
                         </div>
@@ -279,6 +319,7 @@ export default function AdminModerationPage() {
                         className="flex-1 bg-green-500/20 border border-green-400/30 text-green-200 py-2 px-4 rounded-xl font-medium hover:bg-green-500/30 transition-all"
                         whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.98 }}
+                        data-testid="approve-button"
                       >
                         ✅ Approve
                       </motion.button>
@@ -287,6 +328,7 @@ export default function AdminModerationPage() {
                         className="flex-1 bg-red-500/20 border border-red-400/30 text-red-200 py-2 px-4 rounded-xl font-medium hover:bg-red-500/30 transition-all"
                         whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.98 }}
+                        data-testid="reject-button"
                       >
                         ❌ Reject
                       </motion.button>
@@ -301,11 +343,13 @@ export default function AdminModerationPage() {
                   )}
 
                   {item.status !== 'pending' && (
-                    <div className={`text-center py-2 rounded-xl ${
-                      item.status === 'approved' 
-                        ? 'bg-green-500/20 text-green-200' 
-                        : 'bg-red-500/20 text-red-200'
-                    }`}>
+                    <div
+                      className={`text-center py-2 rounded-xl ${
+                        item.status === 'approved'
+                          ? 'bg-green-500/20 text-green-200'
+                          : 'bg-red-500/20 text-red-200'
+                      }`}
+                    >
                       {item.status === 'approved' ? '✅ Approved' : '❌ Rejected'}
                     </div>
                   )}

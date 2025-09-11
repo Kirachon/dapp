@@ -77,7 +77,7 @@ export default function DiscoverPage() {
   const [swipeMutation, { loading: swipeLoading }] = useMutation(SWIPE_MUTATION, {
     onCompleted: (data) => {
       if (data.swipe.matched) {
-        setMatchData({ matchId: data.swipe.matchId });
+        setMatchData({ matchId: data.swipe.matchId, otherUserName: currentProfile?.name });
         setShowMatchModal(true);
       }
     },
@@ -109,8 +109,8 @@ export default function DiscoverPage() {
       transports: ['websocket', 'polling'],
       withCredentials: true,
       query: {
-        test: 'true'
-      }
+        test: 'true',
+      },
     });
 
     newSocket.on('connect', () => {
@@ -129,7 +129,7 @@ export default function DiscoverPage() {
 
     newSocket.on('test-message', (data: { message: string; timestamp: string }) => {
       console.log('📨 Received test message:', data);
-      setReceivedMessages(prev => [...prev, `${data.timestamp}: ${data.message}`]);
+      setReceivedMessages((prev) => [...prev, `${data.timestamp}: ${data.message}`]);
     });
 
     newSocket.on('new_match', (data: { matchId: string; message: string; timestamp: Date }) => {
@@ -164,16 +164,15 @@ export default function DiscoverPage() {
       await swipeMutation({
         variables: {
           targetUserId: currentProfile.userId,
-          direction
-        }
+          direction,
+        },
       });
 
       // Move to next profile after animation
       setTimeout(() => {
-        setCurrentIndex(prev => prev + 1);
+        setCurrentIndex((prev) => prev + 1);
         setSwipeDirection(null);
       }, 300);
-
     } catch (error) {
       console.error('Swipe error:', error);
       setSwipeDirection(null);
@@ -192,7 +191,7 @@ export default function DiscoverPage() {
       socket.emit('test-message', {
         message: testMessage,
         timestamp: new Date().toISOString(),
-        sender: 'discover-page-test'
+        sender: 'discover-page-test',
       });
       setTestMessage('');
     }
@@ -245,7 +244,9 @@ export default function DiscoverPage() {
           <p className="text-[var(--color-text-secondary)] mb-4">
             No more profiles in your area. Check back later for new matches!
           </p>
-          <Button onClick={() => refetch()}>Refresh</Button>
+          <Button onClick={() => refetch()} data-testid="refresh-button">
+            Refresh
+          </Button>
         </div>
       </div>
     );
@@ -287,7 +288,12 @@ export default function DiscoverPage() {
             title={`Socket.IO: ${connectionStatus}`}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+              />
             </svg>
           </motion.button>
 
@@ -297,7 +303,12 @@ export default function DiscoverPage() {
             whileTap={{ scale: 0.95 }}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
             </svg>
           </motion.button>
           <motion.button
@@ -306,8 +317,18 @@ export default function DiscoverPage() {
             whileTap={{ scale: 0.95 }}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+              />
             </svg>
           </motion.button>
         </div>
@@ -321,15 +342,16 @@ export default function DiscoverPage() {
               <motion.div
                 key={currentProfile.userId}
                 className="absolute inset-0 w-full h-full"
+                data-testid="profile-card"
                 initial={{ scale: 0.9, opacity: 0, y: 50 }}
                 animate={{ scale: 1, opacity: 1, y: 0 }}
                 exit={{
                   scale: 0.8,
                   opacity: 0,
                   x: swipeDirection === 'left' ? -400 : swipeDirection === 'right' ? 400 : 0,
-                  rotate: swipeDirection === 'left' ? -30 : swipeDirection === 'right' ? 30 : 0
+                  rotate: swipeDirection === 'left' ? -30 : swipeDirection === 'right' ? 30 : 0,
                 }}
-                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                 drag="x"
                 dragConstraints={{ left: 0, right: 0 }}
                 onDragEnd={(event, info: PanInfo) => {
@@ -379,6 +401,7 @@ export default function DiscoverPage() {
                       {currentProfile.photos.map((_, index) => (
                         <div
                           key={index}
+                          data-testid="photo-indicator"
                           className={`flex-1 h-1.5 rounded-full transition-all ${
                             index === 0 ? 'bg-white shadow-lg' : 'bg-white/40'
                           }`}
@@ -472,7 +495,7 @@ export default function DiscoverPage() {
             whileTap={{ scale: 0.95 }}
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
-            transition={{ delay: 0.8, type: "spring", stiffness: 300 }}
+            transition={{ delay: 0.8, type: 'spring', stiffness: 300 }}
           >
             <span className="text-2xl">❌</span>
           </motion.button>
@@ -486,7 +509,7 @@ export default function DiscoverPage() {
             whileTap={{ scale: 0.95 }}
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
-            transition={{ delay: 0.9, type: "spring", stiffness: 300 }}
+            transition={{ delay: 0.9, type: 'spring', stiffness: 300 }}
           >
             <span className="text-xl">⭐</span>
           </motion.button>
@@ -500,7 +523,7 @@ export default function DiscoverPage() {
             whileTap={{ scale: 0.95 }}
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
-            transition={{ delay: 1.0, type: "spring", stiffness: 300 }}
+            transition={{ delay: 1.0, type: 'spring', stiffness: 300 }}
           >
             <span className="text-2xl">💚</span>
           </motion.button>
@@ -520,24 +543,20 @@ export default function DiscoverPage() {
       </div>
 
       {/* Match Modal */}
-      <Modal
-        isOpen={showMatchModal}
-        onClose={handleMatchModalClose}
-        showCloseButton={false}
-      >
-        <ModalContent className="text-center py-8">
+      <Modal isOpen={showMatchModal} onClose={handleMatchModalClose} showCloseButton={false}>
+        <ModalContent className="text-center py-8" data-testid="match-modal">
           <div className="text-6xl mb-4">🎉</div>
           <h2 className="text-2xl font-bold text-[var(--color-text-primary)] mb-2">
             It's a Match!
           </h2>
           <p className="text-[var(--color-text-secondary)] mb-6">
-            You and {matchData?.user2?.name} liked each other
+            You and {matchData?.otherUserName || 'your match'} liked each other
           </p>
           <div className="flex gap-4">
             <Button variant="secondary" onClick={handleMatchModalClose} className="flex-1">
               Keep Swiping
             </Button>
-            <Button 
+            <Button
               onClick={() => {
                 handleMatchModalClose();
                 router.push('/matches');
@@ -571,7 +590,9 @@ export default function DiscoverPage() {
           <div className="space-y-3">
             {/* Connection Status */}
             <div className="flex items-center gap-2">
-              <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              <div
+                className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}
+              ></div>
               <span className="text-sm text-gray-600">{connectionStatus}</span>
             </div>
 

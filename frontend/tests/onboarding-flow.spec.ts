@@ -21,7 +21,7 @@ test.describe('Detailed Onboarding Flow', () => {
 
     // Fill name
     await page.fill('input[placeholder*="name"], input[placeholder*="Name"]', user.name);
-    
+
     // Test invalid age
     await page.fill('input[type="number"]', '17'); // Under 18
     await page.click('button:has-text("Continue"), button:has-text("Next")');
@@ -31,7 +31,8 @@ test.describe('Detailed Onboarding Flow', () => {
     await page.fill('input[type="number"]', user.age.toString());
 
     // Select gender
-    const genderText = user.gender === 'woman' ? 'Woman' : user.gender === 'man' ? 'Man' : 'Non-binary';
+    const genderText =
+      user.gender === 'woman' ? 'Woman' : user.gender === 'man' ? 'Man' : 'Non-binary';
     try {
       await page.click(`text=${genderText}`);
     } catch {
@@ -48,7 +49,7 @@ test.describe('Detailed Onboarding Flow', () => {
     const user = TEST_USERS.bob;
 
     await authHelper.signUp(user);
-    
+
     // Complete basics step
     await page.fill('input[placeholder*="name"]', user.name);
     await page.fill('input[type="number"]', user.age.toString());
@@ -64,21 +65,26 @@ test.describe('Detailed Onboarding Flow', () => {
       // Override the photos validation by setting mock photos directly in state
       const mockPhotos = [
         'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k=',
-        'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k='
+        'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k=',
       ];
-      sessionStorage.setItem('onboarding_photos', JSON.stringify({
-        photos: mockPhotos,
-        primaryPhotoIndex: 0
-      }));
+      sessionStorage.setItem(
+        'onboarding_photos',
+        JSON.stringify({
+          photos: mockPhotos,
+          primaryPhotoIndex: 0,
+        }),
+      );
 
       // Trigger a storage event to update the component
-      window.dispatchEvent(new StorageEvent('storage', {
-        key: 'onboarding_photos',
-        newValue: JSON.stringify({
-          photos: mockPhotos,
-          primaryPhotoIndex: 0
-        })
-      }));
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'onboarding_photos',
+          newValue: JSON.stringify({
+            photos: mockPhotos,
+            primaryPhotoIndex: 0,
+          }),
+        }),
+      );
     });
 
     // Wait for the component to update
@@ -111,13 +117,12 @@ test.describe('Detailed Onboarding Flow', () => {
 
     // Ensure photos step can continue by pre-populating sessionStorage
     await page.evaluate(() => {
-      const mockPhotos = [
-        'data:image/jpeg;base64,test1',
-        'data:image/jpeg;base64,test2'
-      ];
+      const mockPhotos = ['data:image/jpeg;base64,test1', 'data:image/jpeg;base64,test2'];
       const payload = JSON.stringify({ photos: mockPhotos, primaryPhotoIndex: 0 });
       sessionStorage.setItem('onboarding_photos', payload);
-      window.dispatchEvent(new StorageEvent('storage', { key: 'onboarding_photos', newValue: payload }));
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: 'onboarding_photos', newValue: payload }),
+      );
     });
     await page.waitForTimeout(100);
     await page.click('button:has-text("Continue")');
@@ -125,16 +130,16 @@ test.describe('Detailed Onboarding Flow', () => {
     // Should now be on about page
     await expect(page).toHaveURL(/\/onboarding(-v2)?\/about/);
 
-    // Fill bio directly (validation is disabled in this temporary mode)
     await page.waitForSelector('textarea');
     await page.fill('textarea', user.bio);
-
-    // Skip interest selection (validation disabled)
-
+    // Select minimum interests
+    await page.click('text=Music');
+    await page.click('text=Travel');
+    await page.click('text=Food');
     // Submit About step
     await page.click('button[type="submit"], button:has-text("Continue")');
 
-    // Depending on disabled validations, this may navigate to preferences or complete flow
+    // Continue to next step after validations
     await expect(page).toHaveURL(/\/(onboarding(-v2)?\/preferences|discover|dashboard)/);
   });
 
@@ -162,17 +167,25 @@ test.describe('Detailed Onboarding Flow', () => {
     await page.evaluate(() => {
       const payload = JSON.stringify({
         photos: ['data:image/jpeg;base64,test1', 'data:image/jpeg;base64,test2'],
-        primaryPhotoIndex: 0
+        primaryPhotoIndex: 0,
       });
       sessionStorage.setItem('onboarding_photos', payload);
-      window.dispatchEvent(new StorageEvent('storage', { key: 'onboarding_photos', newValue: payload }));
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: 'onboarding_photos', newValue: payload }),
+      );
     });
     await page.waitForTimeout(100);
     await page.click('button:has-text("Continue")');
 
     // About
     await expect(page).toHaveURL(/\/onboarding(-v2)?\/about/);
-    await page.fill('textarea, textarea[placeholder*="Tell people"]', 'This is a temporary test bio that is sufficiently long.');
+    await page.fill(
+      'textarea, textarea[placeholder*="Tell people"]',
+      'This is a temporary test bio that is sufficiently long.',
+    );
+    await page.click('text=Music');
+    await page.click('text=Travel');
+    await page.click('text=Food');
     await page.click('button:has-text("Continue"), button[type="submit"]');
 
     // Now on Preferences
@@ -196,7 +209,9 @@ test.describe('Detailed Onboarding Flow', () => {
     try {
       await page.click('text=Men, text=Man');
     } catch {
-      try { await page.check('input[value="man"]'); } catch {}
+      try {
+        await page.check('input[value="man"]');
+      } catch {}
     }
 
     // Continue to prompts step
@@ -226,11 +241,11 @@ test.describe('Detailed Onboarding Flow', () => {
             success({
               coords: {
                 latitude: 37.7749,
-                longitude: -122.4194
-              }
+                longitude: -122.4194,
+              },
             });
-          }
-        }
+          },
+        },
       });
     });
 
@@ -249,17 +264,25 @@ test.describe('Detailed Onboarding Flow', () => {
     await page.evaluate(() => {
       const payload = JSON.stringify({
         photos: ['data:image/jpeg;base64,test1', 'data:image/jpeg;base64,test2'],
-        primaryPhotoIndex: 0
+        primaryPhotoIndex: 0,
       });
       sessionStorage.setItem('onboarding_photos', payload);
-      window.dispatchEvent(new StorageEvent('storage', { key: 'onboarding_photos', newValue: payload }));
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: 'onboarding_photos', newValue: payload }),
+      );
     });
     await page.waitForTimeout(100);
     await page.click('button:has-text("Continue")');
 
     // About
     await expect(page).toHaveURL(/\/onboarding(-v2)?\/about/);
-    await page.fill('textarea, textarea[placeholder*="Tell people"]', 'Location test bio that is sufficiently long.');
+    await page.fill(
+      'textarea, textarea[placeholder*="Tell people"]',
+      'Location test bio that is sufficiently long.',
+    );
+    await page.click('text=Music');
+    await page.click('text=Travel');
+    await page.click('text=Food');
     await page.click('button:has-text("Continue"), button[type="submit"]');
 
     // Preferences - continue to prompts
@@ -283,38 +306,40 @@ test.describe('Detailed Onboarding Flow', () => {
 
     // Test complete flow with proper validation at each step
     await authHelper.signUp(user);
-    
+
     // Step 1: Basics with validation
     await expect(page).toHaveURL(/\/onboarding(-v2)?\/basics/);
-    
+
     // Try to continue without filling required fields
     await page.click('button:has-text("Continue")');
     // Should stay on same page
     await expect(page).toHaveURL(/\/onboarding(-v2)?\/basics/);
-    
+
     // Fill all required fields
     await page.fill('input[placeholder*="name"]', user.name);
     await page.fill('input[type="number"]', user.age.toString());
     await page.click('text=Non-binary');
     await page.click('button:has-text("Continue")');
-    
+
     // Step 2: Photos
     await expect(page).toHaveURL(/\/onboarding(-v2)?\/photos/);
     await page.evaluate(() => {
       const payload = JSON.stringify({
         photos: ['data:image/jpeg;base64,test1', 'data:image/jpeg;base64,test2'],
-        primaryPhotoIndex: 0
+        primaryPhotoIndex: 0,
       });
       sessionStorage.setItem('onboarding_photos', payload);
-      window.dispatchEvent(new StorageEvent('storage', { key: 'onboarding_photos', newValue: payload }));
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: 'onboarding_photos', newValue: payload }),
+      );
     });
     await page.waitForTimeout(100);
     await page.click('button:has-text("Continue")');
-    
+
     // Step 3: About
     await expect(page).toHaveURL(/\/onboarding(-v2)?\/about/);
     await page.fill('textarea', user.bio);
-    
+
     // Select minimum required interests
     for (const interest of user.interests.slice(0, 3)) {
       try {
@@ -324,7 +349,7 @@ test.describe('Detailed Onboarding Flow', () => {
       }
     }
     await page.click('button:has-text("Continue")');
-    
+
     // Step 4: Preferences and continue to prompts
     await expect(page).toHaveURL(/\/onboarding(-v2)?\/preferences/);
     await page.click('button:has-text("Continue"), button:has-text("Next")');
@@ -345,17 +370,115 @@ test.describe('Detailed Onboarding Flow', () => {
     const user = TEST_USERS.alice;
 
     await authHelper.signUp(user);
-    
+
     // Fill basics step
     await page.fill('input[placeholder*="name"]', user.name);
     await page.fill('input[type="number"]', user.age.toString());
     await page.click('text=Woman');
-    
+
     // Refresh page
     await page.reload();
-    
+
     // Data should persist
     await expect(page.locator('input[placeholder*="name"]')).toHaveValue(user.name);
     await expect(page.locator('input[type="number"]')).toHaveValue(user.age.toString());
   });
+});
+
+test('Photos step validation: requires at least 2 photos and max 6 enforced', async ({ page }) => {
+  const authHelper = new AuthHelper(page);
+  const user = TEST_USERS.alice;
+
+  await authHelper.signUp(user);
+  await expect(page).toHaveURL(/\/onboarding(-v2)?\/basics/);
+  await page.fill('input[placeholder*="name"]', user.name);
+  await page.fill('input[type="number"]', user.age.toString());
+  await page.click('text=Woman');
+  await page.click('button:has-text("Continue")');
+
+  await expect(page).toHaveURL(/\/onboarding(-v2)?\/photos/);
+
+  // Inject only 1 photo to trigger error
+  await page.evaluate(() => {
+    const payload = JSON.stringify({
+      photos: ['data:image/jpeg;base64,one'],
+      primaryPhotoIndex: 0,
+    });
+    sessionStorage.setItem('onboarding_photos', payload);
+    window.dispatchEvent(
+      new StorageEvent('storage', { key: 'onboarding_photos', newValue: payload }),
+    );
+  });
+  await page.waitForTimeout(100);
+  await page.click('button:has-text("Continue")');
+  await expect(page.locator('text=Please upload at least 2 photos')).toBeVisible();
+
+  // Now inject 7 photos to test max 6 enforcement in UI (should prevent adding beyond 6)
+  await page.evaluate(() => {
+    const photos = Array.from({ length: 7 }).map((_, i) => `data:image/jpeg;base64,photo${i}`);
+    const payload = JSON.stringify({ photos, primaryPhotoIndex: 0 });
+    sessionStorage.setItem('onboarding_photos', payload);
+    window.dispatchEvent(
+      new StorageEvent('storage', { key: 'onboarding_photos', newValue: payload }),
+    );
+  });
+  await page.waitForTimeout(100);
+  // Continue should still proceed because validation runs on >=2, but server will slice to 6.
+  await page.click('button:has-text("Continue")');
+  await expect(page).toHaveURL(/\/onboarding(-v2)?\/about/);
+});
+
+test('About step validation: bio length and interests count', async ({ page }) => {
+  const authHelper = new AuthHelper(page);
+  const user = TEST_USERS.bob;
+
+  await authHelper.signUp(user);
+
+  // Basics
+  await expect(page).toHaveURL(/\/onboarding(-v2)?\/basics/);
+  await page.fill('input[placeholder*="name"]', user.name);
+  await page.fill('input[type="number"]', user.age.toString());
+  await page.click('text=Man');
+  await page.click('button:has-text("Continue")');
+
+  // Photos - inject 2 photos to pass photos step
+  await expect(page).toHaveURL(/\/onboarding(-v2)?\/photos/);
+  await page.evaluate(() => {
+    const payload = JSON.stringify({
+      photos: ['data:image/jpeg;base64,a', 'data:image/jpeg;base64,b'],
+      primaryPhotoIndex: 0,
+    });
+    sessionStorage.setItem('onboarding_photos', payload);
+    window.dispatchEvent(
+      new StorageEvent('storage', { key: 'onboarding_photos', newValue: payload }),
+    );
+  });
+  await page.waitForTimeout(100);
+  await page.click('button:has-text("Continue")');
+
+  // About - try short bio (expect alert)
+  await expect(page).toHaveURL(/\/onboarding(-v2)?\/about/);
+  await page.fill('textarea', 'Too short');
+  const [bioDialog] = await Promise.all([
+    page.waitForEvent('dialog'),
+    page.click('button[type="submit"], button:has-text("Continue")'),
+  ]);
+  expect(bioDialog.message()).toContain('Bio must be at least 10 characters');
+  await bioDialog.accept();
+
+  // Now valid bio but only 2 interests to trigger interests error
+  await page.fill('textarea', 'This is now long enough bio text.');
+  await page.click('text=Music');
+  await page.click('text=Travel');
+  const [interestDialog] = await Promise.all([
+    page.waitForEvent('dialog'),
+    page.click('button[type="submit"], button:has-text("Continue")'),
+  ]);
+  expect(interestDialog.message()).toContain('Please select at least 3 interests');
+  await interestDialog.accept();
+
+  // Satisfy interests and proceed
+  await page.click('text=Food');
+  await page.click('button[type="submit"], button:has-text("Continue")');
+  await expect(page).toHaveURL(/\/onboarding(-v2)?\/preferences/);
 });

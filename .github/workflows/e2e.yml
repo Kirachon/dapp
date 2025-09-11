@@ -1,0 +1,107 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [feature/**, production-ready]
+    paths:
+      - 'frontend/**'
+      - 'src/**'
+      - 'prisma/**'
+      - 'docker-compose.dev.yml'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [production-ready]
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      docker:
+        image: docker:24.0.5-dind
+        options: >-
+          --privileged
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps
+
+      - name: Docker Compose Up (infra)
+        run: |
+          docker compose -f docker-compose.dev.yml up -d postgres redis supertokens minio mailhog
+          docker ps -a
+
+      - name: Create .env for API
+        run: |
+          cp .env.docker .env
+
+      - name: Prisma Migrate Deploy
+        run: npx prisma migrate deploy
+
+      - name: Start Backend+Frontend (dev)
+        run: |
+          node frontend/scripts/dev-both.js &
+          echo $! > devboth.pid
+        env:
+          NODE_ENV: development
+
+      - name: Wait for API and Frontend
+        run: |
+          for i in {1..60}; do
+            (curl -sSf http://localhost:8080/health >/dev/null 2>&1) && break
+            sleep 1
+          done
+          for i in {1..60}; do
+            (curl -sSf http://localhost:3000/ >/dev/null 2>&1) && break
+            sleep 1
+          done
+
+      - name: Run Playwright tests
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:3000
+          PLAYWRIGHT_API_BASE: http://localhost:8080
+          NODE_ENV: development
+        run: |
+          npm run test || npm run test -- --repeat-each=2
+
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+
+      - name: Teardown
+        if: always()
+        run: |
+          if [ -f devboth.pid ]; then kill $(cat devboth.pid) || true; fi
+          docker compose -f docker-compose.dev.yml logs --no-color > docker-infra.log 2>&1 || true
+          docker compose -f docker-compose.dev.yml down || true
+
+      - name: Upload Docker logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-infra-logs
+          path: docker-infra.log

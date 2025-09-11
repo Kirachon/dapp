@@ -19,11 +19,11 @@ export default function OnboardingPhotosPage() {
   const [photos, setPhotos] = useState<PhotoUpload[]>([]);
   const [primaryPhotoIndex, setPrimaryPhotoIndex] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState({ 
-    completed: 0, 
-    total: 0, 
-    currentFile: '', 
-    errors: [] as string[] 
+  const [uploadProgress, setUploadProgress] = useState({
+    completed: 0,
+    total: 0,
+    currentFile: '',
+    errors: [] as string[],
   });
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -72,47 +72,54 @@ export default function OnboardingPhotosPage() {
     }
   }, [isAuthenticated, router]);
 
-  const validateAndAddFile = useCallback((file: File) => {
-    // Validation checks
-    if (photos.length >= 9) {
-      setError('You can upload a maximum of 9 photos');
-      return false;
-    }
+  const validateAndAddFile = useCallback(
+    (file: File) => {
+      // Validation checks
+      if (photos.length >= 6) {
+        setError('You can upload a maximum of 6 photos');
+        return false;
+      }
 
-    if (file.size > 10 * 1024 * 1024) { // 10MB limit to match backend
-      setError(`File too large: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB > 10MB)`);
-      return false;
-    }
+      if (file.size > 10 * 1024 * 1024) {
+        // 10MB limit to match backend
+        setError(`File too large: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB > 10MB)`);
+        return false;
+      }
 
-    if (!file.type.startsWith('image/')) {
-      setError(`Invalid file type: ${file.name} (${file.type}). Please select an image file.`);
-      return false;
-    }
+      if (!file.type.startsWith('image/')) {
+        setError(`Invalid file type: ${file.name} (${file.type}). Please select an image file.`);
+        return false;
+      }
 
-    // Check for supported formats
-    const supportedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
-    if (!supportedTypes.includes(file.type.toLowerCase())) {
-      setError(`Unsupported image format: ${file.type}. Supported formats: JPEG, PNG, WebP, GIF`);
-      return false;
-    }
+      // Check for supported formats
+      const supportedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
+      if (!supportedTypes.includes(file.type.toLowerCase())) {
+        setError(`Unsupported image format: ${file.type}. Supported formats: JPEG, PNG, WebP, GIF`);
+        return false;
+      }
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result as string;
-      const newPhoto: PhotoUpload = {
-        file,
-        preview: result,
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target?.result as string;
+        const newPhoto: PhotoUpload = {
+          file,
+          preview: result,
+        };
+        setPhotos((prev) => [...prev, newPhoto]);
+        setError('');
       };
-      setPhotos(prev => [...prev, newPhoto]);
-      setError('');
-    };
-    reader.readAsDataURL(file);
-    return true;
-  }, [photos.length]);
+      reader.readAsDataURL(file);
+      return true;
+    },
+    [photos.length],
+  );
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    acceptedFiles.forEach(validateAndAddFile);
-  }, [validateAndAddFile]);
+  const onDrop = useCallback(
+    (acceptedFiles: File[]) => {
+      acceptedFiles.forEach(validateAndAddFile);
+    },
+    [validateAndAddFile],
+  );
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -127,9 +134,9 @@ export default function OnboardingPhotosPage() {
   };
 
   const removePhoto = (index: number) => {
-    setPhotos(prev => prev.filter((_, i) => i !== index));
+    setPhotos((prev) => prev.filter((_, i) => i !== index));
     if (primaryPhotoIndex >= index && primaryPhotoIndex > 0) {
-      setPrimaryPhotoIndex(prev => prev - 1);
+      setPrimaryPhotoIndex((prev) => prev - 1);
     }
   };
 
@@ -146,45 +153,52 @@ export default function OnboardingPhotosPage() {
 
     try {
       // Upload photos that haven't been uploaded yet (skip legacy placeholders with size 0)
-      const photosToUpload = photos.filter(photo => !photo.url && photo.file && photo.file.size > 0);
+      const photosToUpload = photos.filter(
+        (photo) => !photo.url && photo.file && photo.file.size > 0,
+      );
       const uploadedUrls: string[] = [];
 
       if (photosToUpload.length > 0) {
         console.log(`📤 Uploading ${photosToUpload.length} photos...`);
 
-        const files = photosToUpload.map(photo => photo.file);
+        const files = photosToUpload.map((photo) => photo.file);
         try {
           const urls = await onboardingService.uploadMultiplePhotos(files, (progress) => {
             setUploadProgress({
               completed: progress.completed,
               total: progress.total,
               currentFile: progress.currentFile || '',
-              errors: progress.errors || []
+              errors: progress.errors || [],
             });
           });
           uploadedUrls.push(...urls);
         } catch (err) {
           // If upload fails (e.g., invalid session), continue with existing data URLs to keep flow unblocked
-          console.warn('⚠️ Photo upload failed in photos step, proceeding with local previews:', (err as Error)?.message);
+          console.warn(
+            '⚠️ Photo upload failed in photos step, proceeding with local previews:',
+            (err as Error)?.message,
+          );
         }
 
         // Update photos with uploaded URLs (best-effort)
         if (uploadedUrls.length > 0) {
-          setPhotos(prev => prev.map((photo) => {
-            if (!photo.url && photo.file && photo.file.size > 0) {
-              const uploadIndex = photosToUpload.findIndex(p => p === photo);
-              if (uploadIndex !== -1 && uploadedUrls[uploadIndex]) {
-                return { ...photo, url: uploadedUrls[uploadIndex] };
+          setPhotos((prev) =>
+            prev.map((photo) => {
+              if (!photo.url && photo.file && photo.file.size > 0) {
+                const uploadIndex = photosToUpload.findIndex((p) => p === photo);
+                if (uploadIndex !== -1 && uploadedUrls[uploadIndex]) {
+                  return { ...photo, url: uploadedUrls[uploadIndex] };
+                }
               }
-            }
-            return photo;
-          }));
+              return photo;
+            }),
+          );
         }
       }
 
       // Collect all photo URLs (prefer real URLs else fallback to data URLs)
       const allPhotoUrls = photos
-        .map(photo => photo.url || (photo.preview?.startsWith('data:') ? photo.preview : ''))
+        .map((photo) => photo.url || (photo.preview?.startsWith('data:') ? photo.preview : ''))
         .filter(Boolean);
       // Also include any newly uploaded URLs we just got
       for (const u of uploadedUrls) {
@@ -193,7 +207,7 @@ export default function OnboardingPhotosPage() {
 
       const photosData: OnboardingPhotos = {
         photos: allPhotoUrls,
-        primaryPhotoIndex
+        primaryPhotoIndex,
       };
 
       // Validate with service
@@ -241,7 +255,12 @@ export default function OnboardingPhotosPage() {
           className="flex items-center gap-2 text-white/80 hover:text-white transition-colors"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M15 19l-7-7 7-7"
+            />
           </svg>
           Back
         </button>
@@ -251,7 +270,10 @@ export default function OnboardingPhotosPage() {
       {/* Progress Bar */}
       <div className="px-4 mb-8 relative z-10">
         <div className="w-full bg-white/20 rounded-full h-3 backdrop-blur-sm">
-          <div className="bg-gradient-to-r from-[#ff6b6b] to-[#ff8e53] h-3 rounded-full transition-all duration-500 shadow-lg" style={{ width: '40%' }}></div>
+          <div
+            className="bg-gradient-to-r from-[#ff6b6b] to-[#ff8e53] h-3 rounded-full transition-all duration-500 shadow-lg"
+            style={{ width: '40%' }}
+          ></div>
         </div>
         <div className="flex justify-between mt-2 text-xs text-white/70">
           <span>Basics</span>
@@ -270,9 +292,7 @@ export default function OnboardingPhotosPage() {
             <div className="w-16 h-16 bg-white/15 rounded-full mx-auto mb-4 flex items-center justify-center backdrop-blur-md border-2 border-white/20">
               <span className="text-2xl">📸</span>
             </div>
-            <h1 className="text-2xl font-bold text-white mb-2">
-              Add your photos
-            </h1>
+            <h1 className="text-2xl font-bold text-white mb-2">Add your photos</h1>
             <p className="text-white/80 text-base">
               Upload at least 2 photos to show your personality
             </p>
@@ -291,7 +311,7 @@ export default function OnboardingPhotosPage() {
 
           {/* Photo Grid */}
           <div className="grid grid-cols-3 gap-3 mb-6">
-            {Array.from({ length: 9 }).map((_, index) => (
+            {Array.from({ length: 6 }).map((_, index) => (
               <motion.div
                 key={index}
                 className="aspect-square relative"
@@ -301,11 +321,13 @@ export default function OnboardingPhotosPage() {
               >
                 {photos[index] ? (
                   <div className="relative w-full h-full group">
-                    <div className={`absolute inset-0 rounded-xl border-3 transition-all ${
-                      primaryPhotoIndex === index
-                        ? 'border-yellow-400 shadow-lg shadow-yellow-400/30'
-                        : 'border-white/30'
-                    }`}>
+                    <div
+                      className={`absolute inset-0 rounded-xl border-3 transition-all ${
+                        primaryPhotoIndex === index
+                          ? 'border-yellow-400 shadow-lg shadow-yellow-400/30'
+                          : 'border-white/30'
+                      }`}
+                    >
                       <img
                         src={photos[index].url || photos[index].preview}
                         alt={`Photo ${index + 1}`}
@@ -327,8 +349,18 @@ export default function OnboardingPhotosPage() {
                         className="bg-white/20 hover:bg-white/30 text-white p-2 rounded-full backdrop-blur-sm transition-all"
                         title="Set as main photo"
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
+                          />
                         </svg>
                       </button>
                       <button
@@ -336,8 +368,18 @@ export default function OnboardingPhotosPage() {
                         className="bg-red-500/20 hover:bg-red-500/30 text-red-200 p-2 rounded-full backdrop-blur-sm transition-all"
                         title="Remove photo"
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                          />
                         </svg>
                       </button>
                     </div>
@@ -349,8 +391,18 @@ export default function OnboardingPhotosPage() {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                   >
-                    <svg className="w-8 h-8 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    <svg
+                      className="w-8 h-8 mb-2"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 4v16m8-8H4"
+                      />
                     </svg>
                     <span className="text-xs font-medium">Add Photo</span>
                   </motion.button>
@@ -361,9 +413,7 @@ export default function OnboardingPhotosPage() {
 
           {/* Upload Instructions */}
           <div className="text-center mb-6">
-            <p className="text-white/70 text-sm mb-2">
-              Tap any empty slot to add a photo
-            </p>
+            <p className="text-white/70 text-sm mb-2">Tap any empty slot to add a photo</p>
             <p className="text-white/60 text-xs">
               Supported formats: JPEG, PNG, WebP, GIF (max 10MB each)
             </p>
@@ -388,7 +438,9 @@ export default function OnboardingPhotosPage() {
             >
               <div className="flex items-center justify-between mb-2">
                 <span className="text-white/80 text-sm">
-                  {uploadProgress.errors.length > 0 ? 'Upload errors occurred' : 'Uploading photos...'}
+                  {uploadProgress.errors.length > 0
+                    ? 'Upload errors occurred'
+                    : 'Uploading photos...'}
                 </span>
                 <span className="text-white text-sm font-medium">
                   {uploadProgress.completed}/{uploadProgress.total}
@@ -405,9 +457,7 @@ export default function OnboardingPhotosPage() {
                 ></div>
               </div>
               {uploadProgress.currentFile && (
-                <p className="text-white/60 text-xs truncate">
-                  {uploadProgress.currentFile}
-                </p>
+                <p className="text-white/60 text-xs truncate">{uploadProgress.currentFile}</p>
               )}
               {uploadProgress.errors.length > 0 && (
                 <div className="mt-2 p-2 bg-red-500/20 border border-red-400/30 rounded-lg">
