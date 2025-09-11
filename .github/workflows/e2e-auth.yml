@@ -10,6 +10,8 @@ on:
       - '.github/workflows/e2e-auth.yml'
       - 'docker-compose.yml'
       - 'src/**'
+  pull_request:
+    branches: [production-ready]
 
 jobs:
   e2e-auth:
@@ -51,8 +53,23 @@ jobs:
           docker ps -a
       - name: Create .env for API
         run: |
-          cp .env.docker .env
+          cat > .env << 'EOF'
+          NODE_ENV=development
+          DATABASE_URL=postgresql://app:app@localhost:5433/dating
+          SUPERTOKENS_CONNECTION_URI=http://localhost:3567
+          REDIS_URL=redis://localhost:6379
+          MINIO_ENDPOINT=localhost:9000
+          MINIO_ROOT_USER=minio
+          MINIO_ROOT_PASSWORD=minio123
+          SMTP_HOST=localhost
+          SMTP_PORT=1025
+          PORT=8080
+          FRONTEND_URL=http://localhost:3000
+          BACKEND_URL=http://localhost:8080
+          EOF
       - name: Prisma Migrate Deploy
+        env:
+          DATABASE_URL: postgresql://app:app@localhost:5433/dating
         run: npx prisma migrate deploy
       - name: Start Backend+Frontend (dev)
         run: |

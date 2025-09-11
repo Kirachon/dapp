@@ -33,11 +33,11 @@ CREATE INDEX IF NOT EXISTS "Report_priority_idx" ON "public"."Report"("priority"
 CREATE INDEX IF NOT EXISTS "Report_createdAt_idx" ON "public"."Report"("createdAt");
 
 ALTER TABLE "public"."Report"
-  ADD CONSTRAINT IF NOT EXISTS "Report_reportedUserId_fkey"
+  ADD CONSTRAINT "Report_reportedUserId_fkey"
   FOREIGN KEY ("reportedUserId") REFERENCES "public"."User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "public"."Report"
-  ADD CONSTRAINT IF NOT EXISTS "Report_reportedById_fkey"
+  ADD CONSTRAINT "Report_reportedById_fkey"
   FOREIGN KEY ("reportedById") REFERENCES "public"."User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- ModerationItem table
@@ -62,10 +62,10 @@ CREATE INDEX IF NOT EXISTS "ModerationItem_submittedAt_idx" ON "public"."Moderat
 CREATE INDEX IF NOT EXISTS "ModerationItem_type_idx" ON "public"."ModerationItem"("type");
 
 ALTER TABLE "public"."ModerationItem"
-  ADD CONSTRAINT IF NOT EXISTS "ModerationItem_userId_fkey"
+  ADD CONSTRAINT "ModerationItem_userId_fkey"
   FOREIGN KEY ("userId") REFERENCES "public"."User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "public"."ModerationItem"
-  ADD CONSTRAINT IF NOT EXISTS "ModerationItem_reportedById_fkey"
+  ADD CONSTRAINT "ModerationItem_reportedById_fkey"
   FOREIGN KEY ("reportedById") REFERENCES "public"."User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
