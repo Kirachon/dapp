@@ -29,16 +29,14 @@ async function provisionUser(page, { email, password, name, age, gender, roles }
 
 async function signIn(page, email: string, _password: string) {
   // Dev-only impersonation: set a cookie the backend reads in preHandler (non-prod only)
-  await page
-    .context()
-    .addCookies([
-      {
-        name: 'dev_impersonate_email',
-        value: encodeURIComponent(email),
-        domain: 'localhost',
-        path: '/',
-      },
-    ]);
+  await page.context().addCookies([
+    {
+      name: 'dev_impersonate_email',
+      value: encodeURIComponent(email),
+      domain: 'localhost',
+      path: '/',
+    },
+  ]);
   // Stabilize by loading a neutral page before navigating to admin
   await page.goto('/');
   await page.waitForLoadState('networkidle');
@@ -121,5 +119,35 @@ test.describe('Admin Moderation Access Control', () => {
     ]);
 
     expect(result).not.toBeNull();
+  });
+
+  test('shows bulk toolbar and disables actions when no items selected', async ({ page }) => {
+    const email = await provisionUser(page, {
+      email: 'admin-bulk@test.com',
+      password: 'TestPass123!',
+      name: 'Admin Bulk',
+      age: 30,
+      gender: 'man',
+      roles: ['admin'],
+    });
+    await signIn(page, email, 'TestPass123!');
+
+    await page.goto('/admin/moderation');
+    await expect(page).toHaveURL(/\/admin\/moderation/);
+
+    // Bulk toolbar should be present
+    const bulkApprove = page.getByTestId('bulk-approve');
+    const bulkReject = page.getByTestId('bulk-reject');
+    const selectAll = page.getByTestId('select-all');
+    const clear = page.getByTestId('clear-selection');
+
+    await expect(bulkApprove).toBeVisible();
+    await expect(bulkReject).toBeVisible();
+    await expect(selectAll).toBeVisible();
+    await expect(clear).toBeVisible();
+
+    // With 0 selected, actions are disabled
+    await expect(bulkApprove).toBeDisabled();
+    await expect(bulkReject).toBeDisabled();
   });
 });

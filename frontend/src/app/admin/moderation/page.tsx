@@ -4,7 +4,12 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { gql, useQuery, useMutation } from '@apollo/client';
-import { ADMIN_MODERATION, ADMIN_MODERATION_ACTION } from '@/lib/admin-queries';
+import {
+  ADMIN_MODERATION,
+  ADMIN_MODERATION_ACTION,
+  ADMIN_MODERATION_BULK_ACTION,
+  ADMIN_ADD_MODERATION_ATTACHMENT,
+} from '@/lib/admin-queries';
 
 interface ModerationItem {
   id: string;
@@ -34,6 +39,38 @@ export default function AdminModerationPage() {
   const [endDate, setEndDate] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(0);
   const [pageSize, setPageSize] = useState<number>(20);
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  const [bulkAction] = useMutation(ADMIN_MODERATION_BULK_ACTION);
+  const [addAttachment] = useMutation(ADMIN_ADD_MODERATION_ATTACHMENT);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const selectAll = () => {
+    const all = new Set((moderationData?.adminModeration?.items || []).map((i: any) => i.id));
+    setSelectedIds(all);
+  };
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const runBulk = async (action: 'approve' | 'reject') => {
+    if (selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    try {
+      await bulkAction({ variables: { itemIds: ids, action, reason: `Bulk ${action}` } });
+      // Rely on refetch to update the list
+    } finally {
+      clearSelection();
+      refetch();
+    }
+  };
 
   // Fetch current user admin status deterministically to gate this page
   const ME = gql`
@@ -406,17 +443,76 @@ export default function AdminModerationPage() {
               <p className="text-white/80">All {activeTab} items have been processed.</p>
             </motion.div>
           ) : (
-            <>
-              <div className="space-y-4" data-testid="moderation-list">
+            <div>
+              <div
+                className="flex items-center justify-between mb-3"
+                role="region"
+                aria-label="Bulk moderation toolbar"
+              >
+                <div className="text-white/70 text-sm">Selected: {selectedIds.size}</div>
+                <div className="flex gap-2">
+                  <button
+                    aria-label="Approve selected"
+                    onClick={() => runBulk('approve')}
+                    disabled={selectedIds.size === 0}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${selectedIds.size === 0 ? 'text-white/30 border-white/10' : 'text-green-200 border-green-400/30 hover:bg-green-500/20'}`}
+                    data-testid="bulk-approve"
+                  >
+                    ✅ Approve
+                  </button>
+                  <button
+                    aria-label="Reject selected"
+                    onClick={() => runBulk('reject')}
+                    disabled={selectedIds.size === 0}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${selectedIds.size === 0 ? 'text-white/30 border-white/10' : 'text-red-200 border-red-400/30 hover:bg-red-500/20'}`}
+                    data-testid="bulk-reject"
+                  >
+                    ❌ Reject
+                  </button>
+                  <button
+                    aria-label="Select all on page"
+                    onClick={selectAll}
+                    className="px-3 py-1.5 rounded-lg text-sm font-medium border text-white/80 border-white/20 hover:bg-white/10"
+                    data-testid="select-all"
+                  >
+                    Select All
+                  </button>
+                  <button
+                    aria-label="Clear selection"
+                    onClick={clearSelection}
+                    className="px-3 py-1.5 rounded-lg text-sm font-medium border text-white/80 border-white/20 hover:bg-white/10"
+                    data-testid="clear-selection"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              <div
+                className="space-y-4"
+                role="list"
+                aria-label="Moderation items"
+                data-testid="moderation-list"
+              >
                 {moderationItems.map((item: ModerationItem, index: number) => (
                   <motion.div
                     key={item.id}
+                    role="listitem"
+                    aria-selected={selectedIds.has(item.id)}
                     className="glass-card-light p-6 rounded-2xl backdrop-blur-lg border border-white/30"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.1 }}
                     data-testid="moderation-item"
                   >
+                    <input
+                      type="checkbox"
+                      aria-label={`Select item ${item.id}`}
+                      checked={selectedIds.has(item.id)}
+                      onChange={() => toggleSelect(item.id)}
+                      className="w-4 h-4 accent-white mr-2"
+                      data-testid="select-item"
+                    />
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-3">
                         <div className="text-2xl">{getTypeIcon(item.type)}</div>
@@ -474,9 +570,13 @@ export default function AdminModerationPage() {
                           ❌ Reject
                         </motion.button>
                         <motion.button
+                          onClick={() => setExpanded((e) => ({ ...e, [item.id]: !e[item.id] }))}
+                          aria-expanded={!!expanded[item.id]}
+                          aria-controls={`details-${item.id}`}
                           className="px-4 py-2 bg-white/10 text-white/70 rounded-xl hover:bg-white/20 transition-all"
                           whileHover={{ scale: 1.02 }}
                           whileTap={{ scale: 0.98 }}
+                          data-testid="toggle-details"
                         >
                           👁️ View Details
                         </motion.button>
@@ -492,6 +592,96 @@ export default function AdminModerationPage() {
                         }`}
                       >
                         {item.status === 'approved' ? '✅ Approved' : '❌ Rejected'}
+                      </div>
+                    )}
+
+                    {expanded[item.id] && (
+                      <div
+                        id={`details-${item.id}`}
+                        className="mt-4 p-3 rounded-xl bg-white/5 border border-white/10"
+                      >
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <h4 className="text-white/80 font-medium mb-2">Attachments</h4>
+                            <ul className="list-disc pl-5 text-white/70">
+                              {((item as any).attachments || []).map((a: any) => (
+                                <li key={a.id}>
+                                  <a
+                                    href={a.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="underline"
+                                  >
+                                    {a.type}
+                                  </a>{' '}
+                                  <span className="text-white/40 text-xs">
+                                    {new Date(a.createdAt).toLocaleString()}
+                                  </span>
+                                </li>
+                              ))}
+                              {(!(item as any).attachments ||
+                                (item as any).attachments.length === 0) && (
+                                <li className="text-white/50">No attachments</li>
+                              )}
+                            </ul>
+                            <div className="mt-3 flex gap-2">
+                              <input
+                                aria-label="Attachment type"
+                                placeholder="type (e.g. EVIDENCE)"
+                                className="px-2 py-1 rounded bg-white/10 text-white border border-white/20"
+                                id={`att-type-${item.id}`}
+                              />
+                              <input
+                                aria-label="Attachment URL"
+                                placeholder="https://..."
+                                className="flex-1 px-2 py-1 rounded bg-white/10 text-white border border-white/20"
+                                id={`att-url-${item.id}`}
+                              />
+                              <button
+                                aria-label="Add attachment"
+                                onClick={async () => {
+                                  const typeEl = document.getElementById(
+                                    `att-type-${item.id}`,
+                                  ) as HTMLInputElement;
+                                  const urlEl = document.getElementById(
+                                    `att-url-${item.id}`,
+                                  ) as HTMLInputElement;
+                                  if (!typeEl?.value || !urlEl?.value) return;
+                                  await addAttachment({
+                                    variables: {
+                                      itemId: item.id,
+                                      type: typeEl.value,
+                                      url: urlEl.value,
+                                    },
+                                  });
+                                  urlEl.value = '';
+                                  await refetch();
+                                }}
+                                className="px-3 py-1.5 rounded-lg text-sm font-medium border text-white/80 border-white/20 hover:bg-white/10"
+                                data-testid="add-attachment"
+                              >
+                                Attach
+                              </button>
+                            </div>
+                          </div>
+                          <div>
+                            <h4 className="text-white/80 font-medium mb-2">Audit Trail</h4>
+                            <ul className="list-disc pl-5 text-white/70">
+                              {((item as any).audits || []).map((a: any) => (
+                                <li key={a.id}>
+                                  <span className="uppercase">{a.action}</span> —{' '}
+                                  {a.reason || 'No reason'}{' '}
+                                  <span className="text-white/40 text-xs">
+                                    {new Date(a.createdAt).toLocaleString()}
+                                  </span>
+                                </li>
+                              ))}
+                              {(!(item as any).audits || (item as any).audits.length === 0) && (
+                                <li className="text-white/50">No audits</li>
+                              )}
+                            </ul>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </motion.div>
@@ -521,7 +711,7 @@ export default function AdminModerationPage() {
                   Next ▶
                 </button>
               </div>
-            </>
+            </div>
           )}
         </div>
       </div>
