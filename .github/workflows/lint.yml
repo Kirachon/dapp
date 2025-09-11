@@ -16,6 +16,8 @@ jobs:
           cache: npm
       - name: Install root deps
         run: npm ci
+      - name: Generate Prisma client (root)
+        run: npm run prisma:generate
       - name: Lint backend + frontend
         run: npm run lint
       - name: Type-check backend
