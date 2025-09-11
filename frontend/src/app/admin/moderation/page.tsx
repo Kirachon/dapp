@@ -55,7 +55,9 @@ export default function AdminModerationPage() {
     });
   };
   const selectAll = () => {
-    const all = new Set((moderationData?.adminModeration?.items || []).map((i: any) => i.id));
+    const all = new Set<string>(
+      (moderationData?.adminModeration?.items || []).map((i: any) => String(i.id)),
+    );
     setSelectedIds(all);
   };
   const clearSelection = () => setSelectedIds(new Set());
@@ -102,7 +104,7 @@ export default function AdminModerationPage() {
         setIsAdminUser(flag);
       } catch {
         // Fall back to Apollo result if network call fails
-        setIsAdminUser(!!meData?.me?.profile?.isAdmin ?? false);
+        setIsAdminUser(!!meData?.me?.profile?.isAdmin);
       }
     }
     checkAdmin();
