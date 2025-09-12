@@ -29,9 +29,11 @@ import supertokens, { getUser as stGetUser } from 'supertokens-node';
 import STCore from 'supertokens-node/lib/build/supertokens';
 
 import { calculateQueryComplexity, DEFAULT_MAX_COMPLEXITY } from './lib/graphql/complexity';
+import { calculateQueryDepth, DEFAULT_MAX_DEPTH } from './lib/graphql/depth';
+
 import { ensureMockAuthDisabledInProd } from './lib/security/mock-auth-guard';
 import { initSuperTokens, Session, EmailPassword, EmailVerification } from './auth/supertokens';
-import { PrismaClient, ProfileVisibility } from '@prisma/client';
+import { PrismaClient, ProfileVisibility, Prisma } from '@prisma/client';
 // @ts-ignore - Fastify plugin shim from SuperTokens
 import {
   plugin as supertokensPlugin,
@@ -101,6 +103,9 @@ async function start() {
   // SECURITY: Disallow mock authentication in production regardless of flags
   ensureMockAuthDisabledInProd();
   // GraphQL maximum complexity (configurable via env)
+  // GraphQL maximum depth (defense-in-depth)
+  const MAX_DEPTH = Number(process.env.GRAPHQL_MAX_DEPTH || DEFAULT_MAX_DEPTH);
+
   const MAX_COMPLEXITY = Number(process.env.GRAPHQL_MAX_COMPLEXITY || DEFAULT_MAX_COMPLEXITY);
 
   // Mock auth endpoints for development/testing only - SECURITY CRITICAL
@@ -548,12 +553,16 @@ async function start() {
 
       // Check IP restrictions for admin operations
       const ADMIN_IP_WHITELIST =
-        process.env.ADMIN_IP_WHITELIST?.split(',').map((ip) => ip.trim()) || [];
-      if (ADMIN_IP_WHITELIST.length > 0) {
-        const clientIP = context.request?.ip;
-        if (!ADMIN_IP_WHITELIST.includes(clientIP)) {
+        process.env.ADMIN_IP_WHITELIST?.split(',')
+          .map((ip) => ip.trim())
+          .filter(Boolean) || [];
+      const isProd = process.env.NODE_ENV === 'production';
+      const clientIP = context.request?.ip;
+
+      if (ADMIN_IP_WHITELIST.length === 0) {
+        if (isProd) {
           logger.security(
-            'admin_access_denied_ip',
+            'admin_ip_allowlist_missing',
             {
               ip: clientIP,
               userId: context.user.id,
@@ -563,6 +572,17 @@ async function start() {
           );
           throw new Error('Admin access restricted to authorized IPs');
         }
+      } else if (!ADMIN_IP_WHITELIST.includes(clientIP)) {
+        logger.security(
+          'admin_access_denied_ip',
+          {
+            ip: clientIP,
+            userId: context.user.id,
+            operation: info?.fieldName || 'unknown',
+          },
+          context.request,
+        );
+        throw new Error('Admin access restricted to authorized IPs');
       }
 
       // Check if user has admin role
@@ -835,46 +855,33 @@ async function start() {
         let candidates;
 
         if (myLocation) {
-          // Use PostGIS for location-based discovery
-          const distanceQuery = `
-            SELECT p.*,
-                   ST_Distance(
-                     ST_Point($1, $2)::geography,
-                     ST_Point(l.longitude, l.latitude)::geography
-                   ) / 1000 as distance_km
-            FROM "Profile" p
-            JOIN "User" u ON p."userId" = u.id
-            JOIN "Location" l ON u.id = l."userId"
-            WHERE p."userId" != $3
-              AND p.age >= $4 AND p.age <= $5
-              AND p.visibility = 'PUBLIC'
-              ${showMe ? 'AND p.gender = $6' : ''}
-              AND NOT EXISTS (
-                SELECT 1 FROM "Swipe" s
-                WHERE s."userId" = $3 AND s."targetUserId" = p."userId"
-              )
-              AND ST_Distance(
-                ST_Point($1, $2)::geography,
-                ST_Point(l.longitude, l.latitude)::geography
-              ) / 1000 <= $${showMe ? '7' : '6'}
-            ORDER BY distance_km ASC, RANDOM()
-            LIMIT $${showMe ? '8' : '7'} OFFSET $${showMe ? '9' : '8'}
-          `;
-
-          const params = [
-            myLocation.longitude,
-            myLocation.latitude,
-            ctx.user.id,
-            minAge,
-            maxAge,
-            maxDistance,
-            ...(showMe ? [showMe] : []),
-            pageSize,
-            (page - 1) * pageSize,
-          ];
-
           try {
-            candidates = await prisma.$queryRawUnsafe(distanceQuery, ...params);
+            const showMeFilter = showMe ? Prisma.sql`AND p.gender = ${showMe}` : Prisma.empty;
+            const results = await prisma.$queryRaw<any[]>`
+              SELECT p.*,
+                     ST_Distance(
+                       ST_Point(${myLocation.longitude}, ${myLocation.latitude})::geography,
+                       ST_Point(l.longitude, l.latitude)::geography
+                     ) / 1000 as distance_km
+              FROM "Profile" p
+              JOIN "User" u ON p."userId" = u.id
+              JOIN "Location" l ON u.id = l."userId"
+              WHERE p."userId" != ${ctx.user.id}
+                AND p.age >= ${minAge} AND p.age <= ${maxAge}
+                AND p.visibility = 'PUBLIC'
+                ${showMeFilter}
+                AND NOT EXISTS (
+                  SELECT 1 FROM "Swipe" s
+                  WHERE s."userId" = ${ctx.user.id} AND s."targetUserId" = p."userId"
+                )
+                AND ST_Distance(
+                  ST_Point(${myLocation.longitude}, ${myLocation.latitude})::geography,
+                  ST_Point(l.longitude, l.latitude)::geography
+                ) / 1000 <= ${maxDistance}
+              ORDER BY distance_km ASC, RANDOM()
+              LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}
+            `;
+            candidates = results;
           } catch (err) {
             console.error('PostGIS discovery query failed, falling back to non-geo discovery', err);
             candidates = await prisma.profile.findMany({
@@ -2376,6 +2383,29 @@ async function start() {
               reply.code(429).send({
                 error: 'Too Complex',
                 message: `Query complexity ${complexity} exceeds limit ${MAX_COMPLEXITY}`,
+              });
+              return;
+            }
+
+            // SECURITY: Enforce GraphQL query depth limit
+            const depth = calculateQueryDepth(queryText);
+            if (depth > MAX_DEPTH) {
+              logger.security(
+                'graphql_depth_rejected',
+                {
+                  ip: request.ip,
+                  depth,
+                  threshold: MAX_DEPTH,
+                  operationName:
+                    (request.body as any)?.operationName ||
+                    (request.query as any)?.operationName ||
+                    'unknown',
+                },
+                request as any,
+              );
+              reply.code(429).send({
+                error: 'Too Deep',
+                message: `Query depth ${depth} exceeds limit ${MAX_DEPTH}`,
               });
               return;
             }
