@@ -11,39 +11,39 @@ const testSuites = [
   {
     name: 'Authentication Flow',
     file: 'tests/auth.spec.ts',
-    description: 'Tests user signup, signin, and session management'
+    description: 'Tests user signup, signin, and session management',
   },
   {
     name: 'Complete Onboarding Flow',
     file: 'tests/onboarding-flow.spec.ts',
-    description: 'Tests the 5-step onboarding process with validation'
+    description: 'Tests the 5-step onboarding process with validation',
   },
   {
     name: 'Discovery and Matching',
     file: 'tests/discovery-matching.spec.ts',
-    description: 'Tests profile discovery, swiping, and match detection'
+    description: 'Tests profile discovery, swiping, and match detection',
   },
   {
     name: 'Real-time Messaging',
     file: 'tests/messaging-realtime.spec.ts',
-    description: 'Tests messaging system with Socket.IO features'
+    description: 'Tests messaging system with Socket.IO features',
   },
   {
     name: 'Complete User Workflow',
     file: 'tests/e2e-complete-workflow.spec.ts',
-    description: 'Tests end-to-end user journeys and integrations'
-  }
+    description: 'Tests end-to-end user journeys and integrations',
+  },
 ];
 
 // Configuration
 const config = {
   headed: process.argv.includes('--headed') || process.argv.includes('-h'),
-  project: process.argv.find(arg => arg.startsWith('--project='))?.split('=')[1] || 'chromium',
-  workers: process.argv.find(arg => arg.startsWith('--workers='))?.split('=')[1] || '1',
-  timeout: process.argv.find(arg => arg.startsWith('--timeout='))?.split('=')[1] || '60000',
-  retries: process.argv.find(arg => arg.startsWith('--retries='))?.split('=')[1] || '1',
-  specific: process.argv.find(arg => arg.startsWith('--test='))?.split('=')[1],
-  verbose: process.argv.includes('--verbose') || process.argv.includes('-v')
+  project: process.argv.find((arg) => arg.startsWith('--project='))?.split('=')[1] || 'chromium',
+  workers: process.argv.find((arg) => arg.startsWith('--workers='))?.split('=')[1] || '1',
+  timeout: process.argv.find((arg) => arg.startsWith('--timeout='))?.split('=')[1] || '60000',
+  retries: process.argv.find((arg) => arg.startsWith('--retries='))?.split('=')[1] || '1',
+  specific: process.argv.find((arg) => arg.startsWith('--test='))?.split('=')[1],
+  verbose: process.argv.includes('--verbose') || process.argv.includes('-v'),
 };
 
 console.log('Configuration:');
@@ -62,14 +62,14 @@ function runTestSuite(testSuite) {
   return new Promise((resolve, reject) => {
     console.log(`🏃 Running: ${testSuite.name}`);
     console.log(`   ${testSuite.description}`);
-    
+
     const args = [
       'test',
       testSuite.file,
       `--project=${config.project}`,
       `--workers=${config.workers}`,
       `--timeout=${config.timeout}`,
-      `--retries=${config.retries}`
+      `--retries=${config.retries}`,
     ];
 
     if (config.headed) {
@@ -85,14 +85,18 @@ function runTestSuite(testSuite) {
     const child = spawn(npxCmd, ['playwright', ...args], {
       stdio: 'inherit',
       cwd: process.cwd(),
-      env: { ...process.env, PLAYWRIGHT_BASE_URL: (global.__FRONTEND_BASE__ || process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3001') },
-      shell: process.platform === 'win32'
+      env: {
+        ...process.env,
+        PLAYWRIGHT_BASE_URL:
+          global.__FRONTEND_BASE__ || process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000',
+      },
+      shell: process.platform === 'win32',
     });
 
     child.on('close', (code) => {
       const duration = Date.now() - startTime;
       const durationStr = `${Math.round(duration / 1000)}s`;
-      
+
       if (code === 0) {
         console.log(`✅ ${testSuite.name} completed successfully (${durationStr})\n`);
         resolve({ success: true, duration, name: testSuite.name });
@@ -112,22 +116,22 @@ function runTestSuite(testSuite) {
 // Function to check prerequisites
 async function checkPrerequisites() {
   console.log('🔍 Checking prerequisites...');
-  
+
   // Check if servers are running
   const http = require('http');
-  
+
   const checkServer = (url, name) => {
     return new Promise((resolve) => {
       const request = http.get(url, (res) => {
         console.log(`✅ ${name} is running`);
         resolve(true);
       });
-      
+
       request.on('error', () => {
         console.log(`❌ ${name} is not running at ${url}`);
         resolve(false);
       });
-      
+
       request.setTimeout(5000, () => {
         console.log(`⏰ ${name} check timed out`);
         resolve(false);
@@ -135,16 +139,27 @@ async function checkPrerequisites() {
     });
   };
 
-  // Force the test base URL to port 3001. Do NOT fallback to 3000.
-  let effectiveFrontendBase = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:3001';
-  const frontendRunning = await checkServer(effectiveFrontendBase, 'Frontend server');
+  // Check frontend on port 3000 first, then fallback to 3001
+  let effectiveFrontendBase = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:3000';
+  let frontendRunning = await checkServer(effectiveFrontendBase, 'Frontend server');
+
+  // If port 3000 fails, try port 3001
+  if (!frontendRunning && effectiveFrontendBase.includes('3000')) {
+    effectiveFrontendBase = 'http://127.0.0.1:3001';
+    frontendRunning = await checkServer(effectiveFrontendBase, 'Frontend server (fallback)');
+  }
+
   const apiRunning = await checkServer('http://127.0.0.1:8080/health', 'API server');
 
   if (!frontendRunning) {
-    console.log(`⚠️ Frontend at ${effectiveFrontendBase} did not respond in time, but proceeding with this base to avoid port drift.`);
+    console.log(
+      `⚠️ Frontend at ${effectiveFrontendBase} did not respond in time, but proceeding with this base to avoid port drift.`,
+    );
   }
   if (!apiRunning) {
-    console.log('\n⚠️  API health check timed out, but continuing. Ensure API is running at http://127.0.0.1:8080');
+    console.log(
+      '\n⚠️  API health check timed out, but continuing. Ensure API is running at http://127.0.0.1:8080',
+    );
   }
 
   // Expose chosen base URL to child processes
@@ -165,15 +180,16 @@ async function main() {
 
     // Filter to specific test if requested
     if (config.specific) {
-      suitesToRun = testSuites.filter(suite => 
-        suite.file.includes(config.specific) || 
-        suite.name.toLowerCase().includes(config.specific.toLowerCase())
+      suitesToRun = testSuites.filter(
+        (suite) =>
+          suite.file.includes(config.specific) ||
+          suite.name.toLowerCase().includes(config.specific.toLowerCase()),
       );
-      
+
       if (suitesToRun.length === 0) {
         console.log(`❌ No test suites found matching: ${config.specific}`);
         console.log('Available test suites:');
-        testSuites.forEach(suite => console.log(`  - ${suite.name} (${suite.file})`));
+        testSuites.forEach((suite) => console.log(`  - ${suite.name} (${suite.file})`));
         process.exit(1);
       }
     }
@@ -189,9 +205,9 @@ async function main() {
     // Summary
     console.log('📊 Test Results Summary');
     console.log('=======================');
-    
-    const successful = results.filter(r => r.success).length;
-    const failed = results.filter(r => !r.success).length;
+
+    const successful = results.filter((r) => r.success).length;
+    const failed = results.filter((r) => !r.success).length;
     const totalDuration = results.reduce((sum, r) => sum + r.duration, 0);
 
     console.log(`Total test suites: ${results.length}`);
@@ -201,9 +217,11 @@ async function main() {
 
     if (failed > 0) {
       console.log('\n❌ Failed test suites:');
-      results.filter(r => !r.success).forEach(r => {
-        console.log(`  - ${r.name} (exit code: ${r.code || 'unknown'})`);
-      });
+      results
+        .filter((r) => !r.success)
+        .forEach((r) => {
+          console.log(`  - ${r.name} (exit code: ${r.code || 'unknown'})`);
+        });
     }
 
     console.log('\n📁 Test artifacts:');
@@ -218,7 +236,6 @@ async function main() {
       console.log('\n💥 Some tests failed. Check the output above for details.');
       process.exit(1);
     }
-
   } catch (error) {
     console.error('❌ Test execution failed:', error);
     process.exit(1);

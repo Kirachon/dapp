@@ -91,6 +91,7 @@ model User {
   reportedBy         Report[]            @relation("ReportedBy")
   moderationItems    ModerationItem[]    @relation("ModerationUser")
   moderationReports  ModerationItem[]    @relation("ModerationReporter")
+  reviewerAudits     ModerationAudit[]   @relation("ReviewerAudits")
 
   @@index([email])
   @@index([createdAt])
@@ -248,11 +249,38 @@ model ModerationItem {
 
   user         User               @relation("ModerationUser", fields: [userId], references: [id], onDelete: Cascade)
   reportedBy   User?              @relation("ModerationReporter", fields: [reportedById], references: [id], onDelete: SetNull)
+  attachments  ModerationAttachment[]
+  audits       ModerationAudit[]
 
   @@index([status])
   @@index([priority])
   @@index([submittedAt])
   @@index([type])
+}
+
+model ModerationAttachment {
+  id        String  @id @default(uuid())
+  itemId    String
+  item      ModerationItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  type      String
+  url       String
+  createdAt DateTime @default(now())
+
+  @@index([itemId])
+}
+
+model ModerationAudit {
+  id         String   @id @default(uuid())
+  itemId     String
+  item       ModerationItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  reviewerId String?
+  reviewer   User?    @relation("ReviewerAudits", fields: [reviewerId], references: [id], onDelete: SetNull)
+  action     String
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  @@index([itemId])
+  @@index([createdAt])
 }
 
 // Content Management Models

@@ -65,9 +65,13 @@ export function initSuperTokens() {
           apis: (original) => ({
             ...original,
             signUpPOST: async (input) => {
+              console.log('🔧 SignUp POST started for email:', input.formFields?.find(f => f.id === 'email')?.value);
               const resp = await original.signUpPOST!(input);
+              console.log('🔧 SignUp POST response status:', resp.status);
+
               try {
                 if (resp.status === 'OK') {
+                  console.log('✅ SignUp successful, creating Prisma user for ID:', resp.user.id);
                   // Upsert Prisma user on any emailpassword signup (REST or programmatic)
                   const { PrismaClient } = await import('@prisma/client');
                   const prisma = new PrismaClient();
@@ -77,12 +81,15 @@ export function initSuperTokens() {
                       update: { email: resp.user.emails[0] || '' },
                       create: { id: resp.user.id, email: resp.user.emails[0] || '', passwordHash: '' },
                     });
+                    console.log('✅ Prisma user created/updated successfully');
                   } finally {
                     await prisma.$disconnect();
                   }
+                } else {
+                  console.log('❌ SignUp failed with status:', resp.status);
                 }
               } catch (e) {
-                console.error('Prisma upsert on signUpPOST failed:', e);
+                console.error('❌ Prisma upsert on signUpPOST failed:', e);
               }
               return resp;
             }
@@ -134,11 +141,11 @@ export function initSuperTokens() {
       }),
       Session.init({
         // Align with frontend: use cookies for token transfer in dev and prod
-        tokenTransferMethod: 'cookie',
+        getTokenTransferMethod: () => 'cookie',
         cookieSecure: process.env.NODE_ENV === 'production',
-        // In development, use SameSite=Lax so Chromium accepts non-secure cookies on localhost.
-        // Ports differ but are same-site on localhost, so Lax is sufficient for API requests with credentials: 'include'.
-        cookieSameSite: process.env.NODE_ENV === 'production' ? 'lax' : 'lax',
+        // In development, use SameSite=None for cross-origin requests between frontend and backend
+        // In production, use SameSite=Lax for better security
+        cookieSameSite: process.env.NODE_ENV === 'production' ? 'lax' : 'none',
         sessionExpiredStatusCode: 401,
         antiCsrf: process.env.NODE_ENV === 'production' ? 'VIA_TOKEN' : 'NONE',
       }),

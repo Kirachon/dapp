@@ -29,16 +29,14 @@ async function provisionUser(page, { email, password, name, age, gender, roles }
 
 async function signIn(page, email: string, _password: string) {
   // Dev-only impersonation: set a cookie the backend reads in preHandler (non-prod only)
-  await page
-    .context()
-    .addCookies([
-      {
-        name: 'dev_impersonate_email',
-        value: encodeURIComponent(email),
-        domain: 'localhost',
-        path: '/',
-      },
-    ]);
+  await page.context().addCookies([
+    {
+      name: 'dev_impersonate_email',
+      value: encodeURIComponent(email),
+      domain: 'localhost',
+      path: '/',
+    },
+  ]);
   // Stabilize by loading a neutral page before navigating to admin
   await page.goto('/');
   await page.waitForLoadState('networkidle');
@@ -122,4 +120,159 @@ test.describe('Admin Moderation Access Control', () => {
 
     expect(result).not.toBeNull();
   });
+
+  test('shows bulk toolbar and disables actions when no items selected', async ({ page }) => {
+    const email = await provisionUser(page, {
+      email: 'admin-bulk@test.com',
+      password: 'TestPass123!',
+      name: 'Admin Bulk',
+      age: 30,
+      gender: 'man',
+      roles: ['admin'],
+    });
+    await signIn(page, email, 'TestPass123!');
+
+    await page.goto('/admin/moderation');
+    await expect(page).toHaveURL(/\/admin\/moderation/);
+
+    // Bulk toolbar should be present
+    const bulkApprove = page.getByTestId('bulk-approve');
+    const bulkReject = page.getByTestId('bulk-reject');
+    const selectAll = page.getByTestId('select-all');
+    const clear = page.getByTestId('clear-selection');
+
+    await expect(bulkApprove).toBeVisible();
+    await expect(bulkReject).toBeVisible();
+    await expect(selectAll).toBeVisible();
+    await expect(clear).toBeVisible();
+
+    // With 0 selected, actions are disabled
+    await expect(bulkApprove).toBeDisabled();
+    await expect(bulkReject).toBeDisabled();
+  });
+});
+
+test('bulk approve selected items triggers GraphQL mutation', async ({ page }) => {
+  const adminEmail = await provisionUser(page, {
+    email: 'admin-bulk-approve@test.com',
+    password: 'TestPass123!',
+    name: 'Admin Bulk Approve',
+    age: 31,
+    gender: 'man',
+    roles: ['admin'],
+  });
+  const userEmail = await provisionUser(page, {
+    email: 'user-to-review@test.com',
+    password: 'TestPass123!',
+    name: 'User To Review',
+    age: 24,
+    gender: 'woman',
+    roles: ['user'],
+  });
+
+  // Seed two moderation items for the normal user
+  await page.request.post(`${API_BASE}/test/moderation-items`, {
+    data: {
+      items: [
+        { userEmail, type: 'PROFILE', content: 'c1', reason: 'r1' },
+        { userEmail, type: 'PROFILE', content: 'c2', reason: 'r2' },
+      ],
+    },
+  });
+
+  await signIn(page, adminEmail, 'TestPass123!');
+  await page.goto('/admin/moderation');
+
+  // Wait for list to render
+  const list = page.getByTestId('moderation-list');
+  await list.waitFor({ state: 'visible' });
+
+  // Select first two items
+  const checkboxes = page.getByTestId('select-item');
+  const count = await checkboxes.count();
+  expect(count).toBeGreaterThan(0);
+  const selectCount = Math.min(count, 2);
+  for (let i = 0; i < selectCount; i++) {
+    await checkboxes.nth(i).check();
+  }
+
+  // Expect bulk-approve mutation to be sent
+  const mutationPromise = page.waitForRequest((req) => {
+    if (req.url().includes('/graphql') && req.method() === 'POST') {
+      try {
+        const body = req.postDataJSON?.();
+        const s = typeof body === 'string' ? body : JSON.stringify(body);
+        return s.includes('adminModerationBulkAction');
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  });
+
+  await page.getByTestId('bulk-approve').click();
+
+  const sent = await mutationPromise;
+  expect(sent).toBeTruthy();
+});
+
+test('bulk reject selected items triggers GraphQL mutation', async ({ page }) => {
+  const adminEmail = await provisionUser(page, {
+    email: 'admin-bulk-reject@test.com',
+    password: 'TestPass123!',
+    name: 'Admin Bulk Reject',
+    age: 31,
+    gender: 'man',
+    roles: ['admin'],
+  });
+  const userEmail = await provisionUser(page, {
+    email: 'user-to-review2@test.com',
+    password: 'TestPass123!',
+    name: 'User To Review 2',
+    age: 24,
+    gender: 'woman',
+    roles: ['user'],
+  });
+
+  // Seed two moderation items for the normal user
+  await page.request.post(`${API_BASE}/test/moderation-items`, {
+    data: {
+      items: [
+        { userEmail, type: 'PROFILE', content: 'c1', reason: 'r1' },
+        { userEmail, type: 'PROFILE', content: 'c2', reason: 'r2' },
+      ],
+    },
+  });
+
+  await signIn(page, adminEmail, 'TestPass123!');
+  await page.goto('/admin/moderation');
+
+  const list = page.getByTestId('moderation-list');
+  await list.waitFor({ state: 'visible' });
+
+  const checkboxes = page.getByTestId('select-item');
+  const count = await checkboxes.count();
+  expect(count).toBeGreaterThan(0);
+  const selectCount = Math.min(count, 2);
+  for (let i = 0; i < selectCount; i++) {
+    await checkboxes.nth(i).check();
+  }
+
+  const mutationPromise = page.waitForRequest((req) => {
+    if (req.url().includes('/graphql') && req.method() === 'POST') {
+      try {
+        const body = req.postDataJSON?.();
+        const s = typeof body === 'string' ? body : JSON.stringify(body);
+        return s.includes('adminModerationBulkAction') && s.includes('reject');
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  });
+
+  await page.getByTestId('bulk-reject').click();
+
+  const sent = await mutationPromise;
+  expect(sent).toBeTruthy();
 });

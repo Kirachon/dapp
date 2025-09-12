@@ -2,6 +2,10 @@ import dotenv from 'dotenv';
 dotenv.config({
   path: process.env.ENV_FILE || (process.env.NODE_ENV === 'staging' ? '.env.staging' : '.env'),
 });
+
+// Validate environment variables before starting
+import './lib/env-validator';
+
 import fastify from 'fastify';
 
 import helmet from '@fastify/helmet';
@@ -10,6 +14,7 @@ import rateLimit from '@fastify/rate-limit';
 import cookie from '@fastify/cookie';
 import formbody from '@fastify/formbody';
 import multipart from '@fastify/multipart';
+import { notifyModerationDecision } from './services/notify';
 import { ApolloServer } from '@apollo/server';
 import { fastifyApolloDrainPlugin, fastifyApolloHandler } from '@as-integrations/fastify';
 import { makeExecutableSchema } from '@graphql-tools/schema';
@@ -22,15 +27,19 @@ import supertokens, { getUser as stGetUser } from 'supertokens-node';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 import STCore from 'supertokens-node/lib/build/supertokens';
+
+import { calculateQueryComplexity, DEFAULT_MAX_COMPLEXITY } from './lib/graphql/complexity';
+import { calculateQueryDepth, DEFAULT_MAX_DEPTH } from './lib/graphql/depth';
+
+import { ensureMockAuthDisabledInProd } from './lib/security/mock-auth-guard';
 import { initSuperTokens, Session, EmailPassword, EmailVerification } from './auth/supertokens';
-import { PrismaClient, ProfileVisibility } from '@prisma/client';
+import { PrismaClient, ProfileVisibility, Prisma } from '@prisma/client';
 // @ts-ignore - Fastify plugin shim from SuperTokens
 import {
   plugin as supertokensPlugin,
   errorHandler,
   wrapRequest,
   wrapResponse,
-  middleware as stFastifyMiddleware,
 } from 'supertokens-node/framework/fastify';
 import { photoRoutes } from './routes/photos';
 import { SocketIOService, socketService } from './services/socketio';
@@ -44,6 +53,8 @@ import {
 import { MonitoringService } from './services/monitoring';
 const prisma = new PrismaClient();
 import { requireAuth } from './auth/guards';
+import { securityMiddleware, adminIPRestriction, cspViolationHandler } from './middleware/security';
+import { securityHeaders, validatePassword, validateFileUpload } from './middleware/validation';
 
 // Simple in-memory rate limiter for GraphQL mutations (per-IP)
 const signupRateMap: Map<string, { count: number; windowStart: number }> = new Map();
@@ -89,6 +100,13 @@ contentService.init(prisma);
 
 async function start() {
   initSuperTokens();
+  // SECURITY: Disallow mock authentication in production regardless of flags
+  ensureMockAuthDisabledInProd();
+  // GraphQL maximum complexity (configurable via env)
+  // GraphQL maximum depth (defense-in-depth)
+  const MAX_DEPTH = Number(process.env.GRAPHQL_MAX_DEPTH || DEFAULT_MAX_DEPTH);
+
+  const MAX_COMPLEXITY = Number(process.env.GRAPHQL_MAX_COMPLEXITY || DEFAULT_MAX_COMPLEXITY);
 
   // Mock auth endpoints for development/testing only - SECURITY CRITICAL
   const setupMockAuth = (fastify: any) => {
@@ -103,9 +121,8 @@ async function start() {
     }
 
     if (isProduction) {
-      console.warn(
-        '⚠️  Mock authentication explicitly enabled in production via ALLOW_MOCK_AUTH=true',
-      );
+      // SECURITY: Never allow mock auth in production
+      throw new Error('SECURITY: Mock authentication cannot be enabled in production.');
     } else {
       console.log('🧪 Mock authentication endpoints enabled for development');
     }
@@ -277,6 +294,10 @@ async function start() {
   server.addHook('onRequest', requestLoggingMiddleware());
   server.addHook('onResponse', responseLoggingHook());
 
+  // Add security middleware
+  server.addHook('onRequest', securityMiddleware);
+  server.addHook('onRequest', securityHeaders);
+
   // Setup mock auth endpoints as fallback
   setupMockAuth(server);
 
@@ -330,33 +351,81 @@ async function start() {
     }
   };
 
+  // Phase 8: Enhanced security headers with Helmet
   await server.register(helmet, {
     contentSecurityPolicy: {
       directives: getCSPConfig(),
       reportOnly: process.env.CSP_REPORT_ONLY === 'true', // Allow report-only mode for testing
     },
-    crossOriginEmbedderPolicy: false, // Disable for development
+    crossOriginEmbedderPolicy: process.env.NODE_ENV === 'production',
+    crossOriginOpenerPolicy: { policy: 'same-origin' },
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    dnsPrefetchControl: { allow: false },
+    frameguard: { action: 'deny' },
+    hidePoweredBy: true,
+    hsts:
+      process.env.NODE_ENV === 'production'
+        ? {
+            maxAge: 31536000, // 1 year
+            includeSubDomains: true,
+            preload: true,
+          }
+        : false,
+    ieNoOpen: true,
+    noSniff: true,
+    originAgentCluster: true,
+    permittedCrossDomainPolicies: false,
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+    xssFilter: true,
   });
   await server.register(cors, corsConfig as any);
 
-  // Enhanced rate limiting
+  // Phase 8: Enhanced rate limiting with per-user and per-IP limits
   await server.register(rateLimit, {
     max: 100,
     timeWindow: '1 minute',
-    allowList: ['127.0.0.1'],
-    errorResponseBuilder: (request, context) => ({
-      code: 429,
-      error: 'Too Many Requests',
-      message: `Rate limit exceeded, retry in ${Math.round(context.ttl / 1000)} seconds`,
-      retryAfter: Math.round(context.ttl / 1000),
-    }),
+    allowList: ['127.0.0.1', '::1'],
+    keyGenerator: (request) => {
+      // Use user ID if authenticated, otherwise fall back to IP
+      const userId = (request as any).user?.id;
+      return userId ? `user:${userId}` : `ip:${request.ip}`;
+    },
+    errorResponseBuilder: (request, context) => {
+      // Phase 8: Enhanced rate limit logging
+      logger.security(
+        'rate_limit_exceeded',
+        {
+          ip: request.ip,
+          userAgent: request.headers['user-agent'],
+          url: request.url,
+          method: request.method,
+          limit: context.max,
+          ttl: context.ttl,
+        },
+        request,
+      );
+
+      return {
+        code: 429,
+        error: 'Too Many Requests',
+        message: `Rate limit exceeded, retry in ${Math.round(context.ttl / 1000)} seconds`,
+        retryAfter: Math.round(context.ttl / 1000),
+      };
+    },
   });
   await server.register(cookie);
-  await server.register(formbody);
+  // Phase 8: Request size limits and input validation
+  await server.register(formbody, {
+    bodyLimit: 1024 * 1024, // 1MB limit for form data
+  });
   await server.register(multipart, {
     limits: {
-      fileSize: 10 * 1024 * 1024, // 10MB
-      files: 1,
+      fieldNameSize: 100, // Max field name size
+      fieldSize: 1024 * 1024, // 1MB max field size
+      fields: 10, // Max number of non-file fields
+      fileSize: 10 * 1024 * 1024, // 10MB max file size
+      files: 5, // Max number of file fields
+      headerPairs: 2000, // Max number of header key-value pairs
     },
   });
   // SuperTokens plugin (preHandler) and NotFound bridge for /auth/*
@@ -456,6 +525,12 @@ async function start() {
     }
   });
 
+  // CSP violation reporting endpoint
+  server.post('/csp-report', async (request, reply) => {
+    await cspViolationHandler(request as any, reply as any);
+    reply.code(204).send();
+  });
+
   // Photo upload routes
   await server.register(photoRoutes);
 
@@ -469,11 +544,45 @@ async function start() {
   // GraphQL schema
   const typeDefs = loadGraphqlSDL(path.join(__dirname, 'graphql', 'schema'));
 
-  // Admin authorization helper
+  // Admin authorization helper with IP restrictions
   const requireAdmin = (resolver: any) => {
     return async (parent: any, args: any, context: any, info: any) => {
       if (!context?.user?.id) {
         throw new Error('Authentication required');
+      }
+
+      // Check IP restrictions for admin operations
+      const ADMIN_IP_WHITELIST =
+        process.env.ADMIN_IP_WHITELIST?.split(',')
+          .map((ip) => ip.trim())
+          .filter(Boolean) || [];
+      const isProd = process.env.NODE_ENV === 'production';
+      const clientIP = context.request?.ip;
+
+      if (ADMIN_IP_WHITELIST.length === 0) {
+        if (isProd) {
+          logger.security(
+            'admin_ip_allowlist_missing',
+            {
+              ip: clientIP,
+              userId: context.user.id,
+              operation: info?.fieldName || 'unknown',
+            },
+            context.request,
+          );
+          throw new Error('Admin access restricted to authorized IPs');
+        }
+      } else if (!ADMIN_IP_WHITELIST.includes(clientIP)) {
+        logger.security(
+          'admin_access_denied_ip',
+          {
+            ip: clientIP,
+            userId: context.user.id,
+            operation: info?.fieldName || 'unknown',
+          },
+          context.request,
+        );
+        throw new Error('Admin access restricted to authorized IPs');
       }
 
       // Check if user has admin role
@@ -483,8 +592,27 @@ async function start() {
       });
 
       if (!user?.profile?.isAdmin) {
+        logger.security(
+          'admin_access_denied_role',
+          {
+            userId: context.user.id,
+            operation: info?.fieldName || 'unknown',
+          },
+          context.request,
+        );
         throw new Error('Admin access required');
       }
+
+      // Log admin operations
+      logger.security(
+        'admin_operation',
+        {
+          userId: context.user.id,
+          operation: info?.fieldName || 'unknown',
+          ip: context.request?.ip,
+        },
+        context.request,
+      );
 
       return resolver(parent, args, context, info);
     };
@@ -727,46 +855,33 @@ async function start() {
         let candidates;
 
         if (myLocation) {
-          // Use PostGIS for location-based discovery
-          const distanceQuery = `
-            SELECT p.*,
-                   ST_Distance(
-                     ST_Point($1, $2)::geography,
-                     ST_Point(l.longitude, l.latitude)::geography
-                   ) / 1000 as distance_km
-            FROM "Profile" p
-            JOIN "User" u ON p."userId" = u.id
-            JOIN "Location" l ON u.id = l."userId"
-            WHERE p."userId" != $3
-              AND p.age >= $4 AND p.age <= $5
-              AND p.visibility = 'PUBLIC'
-              ${showMe ? 'AND p.gender = $6' : ''}
-              AND NOT EXISTS (
-                SELECT 1 FROM "Swipe" s
-                WHERE s."userId" = $3 AND s."targetUserId" = p."userId"
-              )
-              AND ST_Distance(
-                ST_Point($1, $2)::geography,
-                ST_Point(l.longitude, l.latitude)::geography
-              ) / 1000 <= $${showMe ? '7' : '6'}
-            ORDER BY distance_km ASC, RANDOM()
-            LIMIT $${showMe ? '8' : '7'} OFFSET $${showMe ? '9' : '8'}
-          `;
-
-          const params = [
-            myLocation.longitude,
-            myLocation.latitude,
-            ctx.user.id,
-            minAge,
-            maxAge,
-            maxDistance,
-            ...(showMe ? [showMe] : []),
-            pageSize,
-            (page - 1) * pageSize,
-          ];
-
           try {
-            candidates = await prisma.$queryRawUnsafe(distanceQuery, ...params);
+            const showMeFilter = showMe ? Prisma.sql`AND p.gender = ${showMe}` : Prisma.empty;
+            const results = await prisma.$queryRaw<any[]>`
+              SELECT p.*,
+                     ST_Distance(
+                       ST_Point(${myLocation.longitude}, ${myLocation.latitude})::geography,
+                       ST_Point(l.longitude, l.latitude)::geography
+                     ) / 1000 as distance_km
+              FROM "Profile" p
+              JOIN "User" u ON p."userId" = u.id
+              JOIN "Location" l ON u.id = l."userId"
+              WHERE p."userId" != ${ctx.user.id}
+                AND p.age >= ${minAge} AND p.age <= ${maxAge}
+                AND p.visibility = 'PUBLIC'
+                ${showMeFilter}
+                AND NOT EXISTS (
+                  SELECT 1 FROM "Swipe" s
+                  WHERE s."userId" = ${ctx.user.id} AND s."targetUserId" = p."userId"
+                )
+                AND ST_Distance(
+                  ST_Point(${myLocation.longitude}, ${myLocation.latitude})::geography,
+                  ST_Point(l.longitude, l.latitude)::geography
+                ) / 1000 <= ${maxDistance}
+              ORDER BY distance_km ASC, RANDOM()
+              LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}
+            `;
+            candidates = results;
           } catch (err) {
             console.error('PostGIS discovery query failed, falling back to non-geo discovery', err);
             candidates = await prisma.profile.findMany({
@@ -1035,6 +1150,10 @@ async function start() {
             offset?: number;
             status?: string;
             priority?: string;
+            startDate?: string;
+            endDate?: string;
+            type?: string;
+            reporterEmail?: string;
           },
         ) => {
           try {
@@ -1042,11 +1161,16 @@ async function start() {
             const offset = Math.max(0, args.offset ?? 0);
 
             const where: any = {};
-            if (args.status) {
-              where.status = args.status;
+            if (args.status) where.status = args.status;
+            if (args.priority) where.priority = args.priority;
+            if (args.type) where.type = args.type;
+            if (args.startDate || args.endDate) {
+              where.submittedAt = {};
+              if (args.startDate) where.submittedAt.gte = new Date(args.startDate);
+              if (args.endDate) where.submittedAt.lte = new Date(args.endDate);
             }
-            if (args.priority) {
-              where.priority = args.priority;
+            if (args.reporterEmail) {
+              where.reportedBy = { email: { contains: args.reporterEmail, mode: 'insensitive' } };
             }
 
             const [items, totalCount] = await Promise.all([
@@ -1055,6 +1179,8 @@ async function start() {
                 include: {
                   user: { include: { profile: true } },
                   reportedBy: { include: { profile: true } },
+                  attachments: true,
+                  audits: { orderBy: { createdAt: 'desc' }, take: 5 },
                 },
                 orderBy: [{ priority: 'desc' }, { submittedAt: 'desc' }],
                 take: limit,
@@ -1085,6 +1211,19 @@ async function start() {
               reportedBy: item.reportedBy?.profile?.name || 'Anonymous',
               reviewedAt: item.reviewedAt,
               reviewedBy: item.reviewedBy,
+              attachments: item.attachments?.map((a) => ({
+                id: a.id,
+                type: a.type,
+                url: a.url,
+                createdAt: a.createdAt,
+              })),
+              audits: item.audits?.map((a) => ({
+                id: a.id,
+                action: a.action,
+                reason: a.reason,
+                reviewerId: a.reviewerId,
+                createdAt: a.createdAt,
+              })),
             }));
 
             return {
@@ -1220,9 +1359,18 @@ async function start() {
         ctx: { request: any; reply: any },
       ) => {
         try {
-          // Basic input validation
+          // Enhanced input validation
           if (!args.acceptTerms) {
             return { ok: false, error: 'TERMS_REQUIRED' };
+          }
+
+          // Validate password strength
+          const passwordValidation = validatePassword(args.password);
+          if (!passwordValidation.valid) {
+            return {
+              ok: false,
+              error: `WEAK_PASSWORD: ${passwordValidation.errors.join(', ')}`,
+            };
           }
 
           // Per-IP rate limiting for signup attempts
@@ -1911,16 +2059,104 @@ async function start() {
         ) => {
           const status = action === 'approve' ? 'APPROVED' : 'REJECTED';
 
-          await prisma.moderationItem.update({
-            where: { id: itemId },
-            data: {
-              status,
-              reviewedAt: new Date(),
-              reviewedBy: 'admin',
-              reason: reason || `Action: ${action}`,
-            },
-          });
+          await prisma.$transaction([
+            prisma.moderationItem.update({
+              where: { id: itemId },
+              data: {
+                status,
+                reviewedAt: new Date(),
+                reviewedBy: String((arguments as any)[2]?.user?.id || 'admin'),
+                reason: reason || `Action: ${action}`,
+              },
+            }),
+            prisma.moderationAudit.create({
+              data: {
+                itemId,
+                reviewerId: (arguments as any)[2]?.user?.id || null,
+                action,
+                reason,
+              },
+            }),
+          ]);
 
+          // Dev/test notification of moderation decision (no-op in production)
+          try {
+            const rec = await prisma.moderationItem.findUnique({
+              where: { id: itemId },
+              select: { user: { select: { email: true } } },
+            });
+            const email = rec?.user?.email;
+            if (email) {
+              await notifyModerationDecision(email, itemId, action, reason);
+            }
+          } catch {}
+
+          return true;
+        },
+      ),
+
+      adminModerationBulkAction: requireAdmin(
+        async (
+          _: unknown,
+          {
+            itemIds,
+            action,
+            reason,
+          }: {
+            itemIds: string[];
+            action: string;
+            reason?: string;
+          },
+          ctx: any,
+        ) => {
+          const status = action === 'approve' ? 'APPROVED' : 'REJECTED';
+          await prisma.$transaction(
+            itemIds.flatMap((itemId) => [
+              prisma.moderationItem.update({
+                where: { id: itemId },
+                data: {
+                  status,
+                  reviewedAt: new Date(),
+                  reviewedBy: String(ctx?.user?.id || 'admin'),
+                  reason: reason || `Action: ${action}`,
+                },
+              }),
+              prisma.moderationAudit.create({
+                data: {
+                  itemId,
+                  reviewerId: ctx?.user?.id || null,
+                  action,
+                  reason,
+                },
+              }),
+            ]),
+          );
+
+          // Dev/test notifications for each affected item (no-op in production)
+          try {
+            const items = await prisma.moderationItem.findMany({
+              where: { id: { in: itemIds } },
+              select: { id: true, user: { select: { email: true } } },
+            });
+            for (const it of items) {
+              if (it.user?.email) {
+                await notifyModerationDecision(it.user.email, it.id, action, reason);
+              }
+            }
+          } catch {}
+
+          return true;
+        },
+      ),
+
+      adminAddModerationAttachment: requireAdmin(
+        async (
+          _: unknown,
+          { itemId, type, url }: { itemId: string; type: string; url: string },
+        ) => {
+          await prisma.moderationAttachment.create({
+            data: { itemId, type, url },
+          });
           return true;
         },
       ),
@@ -2061,7 +2297,59 @@ async function start() {
 
   const apollo = new ApolloServer({
     schema,
-    plugins: [fastifyApolloDrainPlugin(server)],
+    plugins: [
+      fastifyApolloDrainPlugin(server),
+      {
+        async requestDidStart(requestContext) {
+          const start = Date.now();
+          const query = requestContext.request.query || '';
+          const isMutation = /^\s*mutation\b/.test(query);
+          const opType = isMutation ? 'mutation' : 'query';
+          const opName = requestContext.request.operationName || 'anonymous';
+          const correlationId = (requestContext.contextValue as any)?.request?.headers?.[
+            'x-correlation-id'
+          ] as string | undefined;
+
+          // Phase 8: Query complexity analysis (simple heuristic)
+          const queryComplexity = calculateQueryComplexity(query);
+          if (queryComplexity > MAX_COMPLEXITY) {
+            logger.warn(`🔥 High complexity GraphQL query detected: ${opName}`, {
+              correlationId,
+              operation: 'high_complexity_query',
+              metadata: {
+                operationName: opName,
+                operationType: opType,
+                complexity: queryComplexity,
+                threshold: MAX_COMPLEXITY,
+              },
+            });
+          }
+          return {
+            async willSendResponse() {
+              const duration = Date.now() - start;
+              logger.graphql(opName, opType as any, duration, { correlationId });
+
+              // Phase 8: Enhanced monitoring - slow query detection
+              if (duration > 500) {
+                logger.warn(
+                  `🐌 Slow GraphQL operation detected: ${opName} (${opType}) took ${duration}ms`,
+                  {
+                    correlationId,
+                    operation: 'slow_graphql_query',
+                    duration,
+                    metadata: {
+                      operationName: opName,
+                      operationType: opType,
+                      threshold: 500,
+                    },
+                  },
+                );
+              }
+            },
+          };
+        },
+      },
+    ],
   });
   await apollo.start();
 
@@ -2070,6 +2358,61 @@ async function start() {
     // Add preHandler to extract session before GraphQL processing
     fastify.addHook('preHandler', async (request, reply) => {
       try {
+        // SECURITY: Enforce GraphQL query complexity before auth/session extraction
+        try {
+          const method = request.method;
+          const url = (request as any).url as string;
+          if (url && url.startsWith('/graphql') && (method === 'POST' || method === 'GET')) {
+            const queryText =
+              method === 'GET' ? (request.query as any)?.query : (request.body as any)?.query;
+            const complexity = calculateQueryComplexity(queryText);
+            if (complexity > MAX_COMPLEXITY) {
+              logger.security(
+                'graphql_complexity_rejected',
+                {
+                  ip: request.ip,
+                  complexity,
+                  threshold: MAX_COMPLEXITY,
+                  operationName:
+                    (request.body as any)?.operationName ||
+                    (request.query as any)?.operationName ||
+                    'unknown',
+                },
+                request as any,
+              );
+              reply.code(429).send({
+                error: 'Too Complex',
+                message: `Query complexity ${complexity} exceeds limit ${MAX_COMPLEXITY}`,
+              });
+              return;
+            }
+
+            // SECURITY: Enforce GraphQL query depth limit
+            const depth = calculateQueryDepth(queryText);
+            if (depth > MAX_DEPTH) {
+              logger.security(
+                'graphql_depth_rejected',
+                {
+                  ip: request.ip,
+                  depth,
+                  threshold: MAX_DEPTH,
+                  operationName:
+                    (request.body as any)?.operationName ||
+                    (request.query as any)?.operationName ||
+                    'unknown',
+                },
+                request as any,
+              );
+              reply.code(429).send({
+                error: 'Too Deep',
+                message: `Query depth ${depth} exceeds limit ${MAX_DEPTH}`,
+              });
+              return;
+            }
+          }
+        } catch (e) {
+          // If parsing fails, continue; Apollo will handle malformed requests
+        }
         // Dev-only impersonation via cookie to stabilise E2E tests (no effect in production)
         if (process.env.NODE_ENV !== 'production') {
           const cookieHeader = (request.headers['cookie'] as string) || '';

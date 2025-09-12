@@ -10,6 +10,8 @@ on:
       - '.github/workflows/e2e-auth.yml'
       - 'docker-compose.yml'
       - 'src/**'
+  pull_request:
+    branches: [production-ready]
 
 jobs:
   e2e-auth:
@@ -22,7 +24,7 @@ jobs:
       deployments: none
 
     env:
-      PLAYWRIGHT_BASE_URL: http://localhost:3001
+      PLAYWRIGHT_BASE_URL: http://localhost:3000
       NODE_ENV: test
 
     steps:
@@ -35,6 +37,8 @@ jobs:
           node-version: 20
           cache: 'npm'
 
+      - name: Install root dependencies
+        run: npm ci
       - name: Install frontend dependencies
         working-directory: ./frontend
         run: npm ci
@@ -43,10 +47,46 @@ jobs:
         working-directory: ./frontend
         run: npx playwright install --with-deps
 
-      - name: Start services via Docker Compose
+      - name: Start services via Docker Compose (infra)
         run: |
-          docker compose up -d
+          docker compose up -d postgres redis supertokens minio mailhog
           docker ps -a
+      - name: Create .env for API
+        run: |
+          cat > .env << 'EOF'
+          NODE_ENV=development
+          DATABASE_URL=postgresql://app:app@localhost:5433/dating
+          SUPERTOKENS_CONNECTION_URI=http://localhost:3567
+          REDIS_URL=redis://localhost:6379
+          MINIO_ENDPOINT=localhost:9000
+          MINIO_ROOT_USER=minio
+          MINIO_ROOT_PASSWORD=minio123
+          SMTP_HOST=localhost
+          SMTP_PORT=1025
+          PORT=8080
+          FRONTEND_URL=http://localhost:3000
+          BACKEND_URL=http://localhost:8080
+          EOF
+      - name: Prisma Migrate Deploy
+        env:
+          DATABASE_URL: postgresql://app:app@localhost:5433/dating
+        run: npx prisma migrate deploy
+      - name: Start Backend+Frontend (dev)
+        run: |
+          node frontend/scripts/dev-both.js &
+          echo $! > devboth.pid
+        env:
+          NODE_ENV: development
+      - name: Wait for API and Frontend
+        run: |
+          for i in {1..60}; do
+            (curl -sSf http://localhost:8080/health >/dev/null 2>&1) && break
+            sleep 1
+          done
+          for i in {1..60}; do
+            (curl -sSf http://localhost:3000/ >/dev/null 2>&1) && break
+            sleep 1
+          done
 
       - name: Wait for API (8080)
         run: |
@@ -54,18 +94,24 @@ jobs:
             if curl -sSf http://localhost:8080/graphql -X POST -H 'content-type: application/json' --data '{"query":"{__typename}"}' >/dev/null; then
               echo "API is ready"; exit 0; fi; sleep 2; done; exit 1
 
-      - name: Wait for Frontend (3001)
+      - name: Wait for Frontend (3000)
         run: |
           for i in {1..60}; do
-            if curl -sSf http://localhost:3001 >/dev/null; then echo "Frontend ready"; exit 0; fi; sleep 2; done; exit 1
+            if curl -sSf http://localhost:3000 >/dev/null; then echo "Frontend ready"; exit 0; fi; sleep 2; done; exit 1
 
       - name: Run Playwright (advanced auth only)
         working-directory: ./frontend
         env:
-          PLAYWRIGHT_BASE_URL: http://localhost:3001
+          PLAYWRIGHT_BASE_URL: http://localhost:3000
           CI: 'true'
         run: |
           npx playwright test tests/auth-advanced.spec.ts --project=chromium --reporter=html,line
+      - name: Teardown
+        if: always()
+        run: |
+          if [ -f devboth.pid ]; then kill $(cat devboth.pid) || true; fi
+          docker compose logs --no-color > docker-infra.log 2>&1 || true
+          docker compose down || true
 
       - name: Upload Playwright HTML Report
         if: always()
