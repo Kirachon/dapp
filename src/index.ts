@@ -2,6 +2,10 @@ import dotenv from 'dotenv';
 dotenv.config({
   path: process.env.ENV_FILE || (process.env.NODE_ENV === 'staging' ? '.env.staging' : '.env'),
 });
+
+// Validate environment variables before starting
+import './lib/env-validator';
+
 import fastify from 'fastify';
 
 import helmet from '@fastify/helmet';
@@ -23,6 +27,9 @@ import supertokens, { getUser as stGetUser } from 'supertokens-node';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 import STCore from 'supertokens-node/lib/build/supertokens';
+
+import { calculateQueryComplexity, DEFAULT_MAX_COMPLEXITY } from './lib/graphql/complexity';
+import { ensureMockAuthDisabledInProd } from './lib/security/mock-auth-guard';
 import { initSuperTokens, Session, EmailPassword, EmailVerification } from './auth/supertokens';
 import { PrismaClient, ProfileVisibility } from '@prisma/client';
 // @ts-ignore - Fastify plugin shim from SuperTokens
@@ -31,7 +38,6 @@ import {
   errorHandler,
   wrapRequest,
   wrapResponse,
-  middleware as stFastifyMiddleware,
 } from 'supertokens-node/framework/fastify';
 import { photoRoutes } from './routes/photos';
 import { SocketIOService, socketService } from './services/socketio';
@@ -45,6 +51,8 @@ import {
 import { MonitoringService } from './services/monitoring';
 const prisma = new PrismaClient();
 import { requireAuth } from './auth/guards';
+import { securityMiddleware, adminIPRestriction, cspViolationHandler } from './middleware/security';
+import { securityHeaders, validatePassword, validateFileUpload } from './middleware/validation';
 
 // Simple in-memory rate limiter for GraphQL mutations (per-IP)
 const signupRateMap: Map<string, { count: number; windowStart: number }> = new Map();
@@ -90,6 +98,10 @@ contentService.init(prisma);
 
 async function start() {
   initSuperTokens();
+  // SECURITY: Disallow mock authentication in production regardless of flags
+  ensureMockAuthDisabledInProd();
+  // GraphQL maximum complexity (configurable via env)
+  const MAX_COMPLEXITY = Number(process.env.GRAPHQL_MAX_COMPLEXITY || DEFAULT_MAX_COMPLEXITY);
 
   // Mock auth endpoints for development/testing only - SECURITY CRITICAL
   const setupMockAuth = (fastify: any) => {
@@ -104,9 +116,8 @@ async function start() {
     }
 
     if (isProduction) {
-      console.warn(
-        '⚠️  Mock authentication explicitly enabled in production via ALLOW_MOCK_AUTH=true',
-      );
+      // SECURITY: Never allow mock auth in production
+      throw new Error('SECURITY: Mock authentication cannot be enabled in production.');
     } else {
       console.log('🧪 Mock authentication endpoints enabled for development');
     }
@@ -278,6 +289,10 @@ async function start() {
   server.addHook('onRequest', requestLoggingMiddleware());
   server.addHook('onResponse', responseLoggingHook());
 
+  // Add security middleware
+  server.addHook('onRequest', securityMiddleware);
+  server.addHook('onRequest', securityHeaders);
+
   // Setup mock auth endpoints as fallback
   setupMockAuth(server);
 
@@ -331,33 +346,81 @@ async function start() {
     }
   };
 
+  // Phase 8: Enhanced security headers with Helmet
   await server.register(helmet, {
     contentSecurityPolicy: {
       directives: getCSPConfig(),
       reportOnly: process.env.CSP_REPORT_ONLY === 'true', // Allow report-only mode for testing
     },
-    crossOriginEmbedderPolicy: false, // Disable for development
+    crossOriginEmbedderPolicy: process.env.NODE_ENV === 'production',
+    crossOriginOpenerPolicy: { policy: 'same-origin' },
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    dnsPrefetchControl: { allow: false },
+    frameguard: { action: 'deny' },
+    hidePoweredBy: true,
+    hsts:
+      process.env.NODE_ENV === 'production'
+        ? {
+            maxAge: 31536000, // 1 year
+            includeSubDomains: true,
+            preload: true,
+          }
+        : false,
+    ieNoOpen: true,
+    noSniff: true,
+    originAgentCluster: true,
+    permittedCrossDomainPolicies: false,
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+    xssFilter: true,
   });
   await server.register(cors, corsConfig as any);
 
-  // Enhanced rate limiting
+  // Phase 8: Enhanced rate limiting with per-user and per-IP limits
   await server.register(rateLimit, {
     max: 100,
     timeWindow: '1 minute',
-    allowList: ['127.0.0.1'],
-    errorResponseBuilder: (request, context) => ({
-      code: 429,
-      error: 'Too Many Requests',
-      message: `Rate limit exceeded, retry in ${Math.round(context.ttl / 1000)} seconds`,
-      retryAfter: Math.round(context.ttl / 1000),
-    }),
+    allowList: ['127.0.0.1', '::1'],
+    keyGenerator: (request) => {
+      // Use user ID if authenticated, otherwise fall back to IP
+      const userId = (request as any).user?.id;
+      return userId ? `user:${userId}` : `ip:${request.ip}`;
+    },
+    errorResponseBuilder: (request, context) => {
+      // Phase 8: Enhanced rate limit logging
+      logger.security(
+        'rate_limit_exceeded',
+        {
+          ip: request.ip,
+          userAgent: request.headers['user-agent'],
+          url: request.url,
+          method: request.method,
+          limit: context.max,
+          ttl: context.ttl,
+        },
+        request,
+      );
+
+      return {
+        code: 429,
+        error: 'Too Many Requests',
+        message: `Rate limit exceeded, retry in ${Math.round(context.ttl / 1000)} seconds`,
+        retryAfter: Math.round(context.ttl / 1000),
+      };
+    },
   });
   await server.register(cookie);
-  await server.register(formbody);
+  // Phase 8: Request size limits and input validation
+  await server.register(formbody, {
+    bodyLimit: 1024 * 1024, // 1MB limit for form data
+  });
   await server.register(multipart, {
     limits: {
-      fileSize: 10 * 1024 * 1024, // 10MB
-      files: 1,
+      fieldNameSize: 100, // Max field name size
+      fieldSize: 1024 * 1024, // 1MB max field size
+      fields: 10, // Max number of non-file fields
+      fileSize: 10 * 1024 * 1024, // 10MB max file size
+      files: 5, // Max number of file fields
+      headerPairs: 2000, // Max number of header key-value pairs
     },
   });
   // SuperTokens plugin (preHandler) and NotFound bridge for /auth/*
@@ -457,6 +520,12 @@ async function start() {
     }
   });
 
+  // CSP violation reporting endpoint
+  server.post('/csp-report', async (request, reply) => {
+    await cspViolationHandler(request as any, reply as any);
+    reply.code(204).send();
+  });
+
   // Photo upload routes
   await server.register(photoRoutes);
 
@@ -470,11 +539,30 @@ async function start() {
   // GraphQL schema
   const typeDefs = loadGraphqlSDL(path.join(__dirname, 'graphql', 'schema'));
 
-  // Admin authorization helper
+  // Admin authorization helper with IP restrictions
   const requireAdmin = (resolver: any) => {
     return async (parent: any, args: any, context: any, info: any) => {
       if (!context?.user?.id) {
         throw new Error('Authentication required');
+      }
+
+      // Check IP restrictions for admin operations
+      const ADMIN_IP_WHITELIST =
+        process.env.ADMIN_IP_WHITELIST?.split(',').map((ip) => ip.trim()) || [];
+      if (ADMIN_IP_WHITELIST.length > 0) {
+        const clientIP = context.request?.ip;
+        if (!ADMIN_IP_WHITELIST.includes(clientIP)) {
+          logger.security(
+            'admin_access_denied_ip',
+            {
+              ip: clientIP,
+              userId: context.user.id,
+              operation: info?.fieldName || 'unknown',
+            },
+            context.request,
+          );
+          throw new Error('Admin access restricted to authorized IPs');
+        }
       }
 
       // Check if user has admin role
@@ -484,8 +572,27 @@ async function start() {
       });
 
       if (!user?.profile?.isAdmin) {
+        logger.security(
+          'admin_access_denied_role',
+          {
+            userId: context.user.id,
+            operation: info?.fieldName || 'unknown',
+          },
+          context.request,
+        );
         throw new Error('Admin access required');
       }
+
+      // Log admin operations
+      logger.security(
+        'admin_operation',
+        {
+          userId: context.user.id,
+          operation: info?.fieldName || 'unknown',
+          ip: context.request?.ip,
+        },
+        context.request,
+      );
 
       return resolver(parent, args, context, info);
     };
@@ -1245,9 +1352,18 @@ async function start() {
         ctx: { request: any; reply: any },
       ) => {
         try {
-          // Basic input validation
+          // Enhanced input validation
           if (!args.acceptTerms) {
             return { ok: false, error: 'TERMS_REQUIRED' };
+          }
+
+          // Validate password strength
+          const passwordValidation = validatePassword(args.password);
+          if (!passwordValidation.valid) {
+            return {
+              ok: false,
+              error: `WEAK_PASSWORD: ${passwordValidation.errors.join(', ')}`,
+            };
           }
 
           // Per-IP rate limiting for signup attempts
@@ -2186,10 +2302,42 @@ async function start() {
           const correlationId = (requestContext.contextValue as any)?.request?.headers?.[
             'x-correlation-id'
           ] as string | undefined;
+
+          // Phase 8: Query complexity analysis (simple heuristic)
+          const queryComplexity = calculateQueryComplexity(query);
+          if (queryComplexity > MAX_COMPLEXITY) {
+            logger.warn(`🔥 High complexity GraphQL query detected: ${opName}`, {
+              correlationId,
+              operation: 'high_complexity_query',
+              metadata: {
+                operationName: opName,
+                operationType: opType,
+                complexity: queryComplexity,
+                threshold: MAX_COMPLEXITY,
+              },
+            });
+          }
           return {
             async willSendResponse() {
               const duration = Date.now() - start;
               logger.graphql(opName, opType as any, duration, { correlationId });
+
+              // Phase 8: Enhanced monitoring - slow query detection
+              if (duration > 500) {
+                logger.warn(
+                  `🐌 Slow GraphQL operation detected: ${opName} (${opType}) took ${duration}ms`,
+                  {
+                    correlationId,
+                    operation: 'slow_graphql_query',
+                    duration,
+                    metadata: {
+                      operationName: opName,
+                      operationType: opType,
+                      threshold: 500,
+                    },
+                  },
+                );
+              }
             },
           };
         },
@@ -2203,6 +2351,38 @@ async function start() {
     // Add preHandler to extract session before GraphQL processing
     fastify.addHook('preHandler', async (request, reply) => {
       try {
+        // SECURITY: Enforce GraphQL query complexity before auth/session extraction
+        try {
+          const method = request.method;
+          const url = (request as any).url as string;
+          if (url && url.startsWith('/graphql') && (method === 'POST' || method === 'GET')) {
+            const queryText =
+              method === 'GET' ? (request.query as any)?.query : (request.body as any)?.query;
+            const complexity = calculateQueryComplexity(queryText);
+            if (complexity > MAX_COMPLEXITY) {
+              logger.security(
+                'graphql_complexity_rejected',
+                {
+                  ip: request.ip,
+                  complexity,
+                  threshold: MAX_COMPLEXITY,
+                  operationName:
+                    (request.body as any)?.operationName ||
+                    (request.query as any)?.operationName ||
+                    'unknown',
+                },
+                request as any,
+              );
+              reply.code(429).send({
+                error: 'Too Complex',
+                message: `Query complexity ${complexity} exceeds limit ${MAX_COMPLEXITY}`,
+              });
+              return;
+            }
+          }
+        } catch (e) {
+          // If parsing fails, continue; Apollo will handle malformed requests
+        }
         // Dev-only impersonation via cookie to stabilise E2E tests (no effect in production)
         if (process.env.NODE_ENV !== 'production') {
           const cookieHeader = (request.headers['cookie'] as string) || '';
