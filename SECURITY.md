@@ -2,7 +2,7 @@
 
 ## LoveConnect Dating App - Security Best Practices
 
-**Last Updated:** August 17, 2025
+**Last Updated:** September 12, 2025
 **Security Status:** ✅ Repository Secured
 **Critical Issues:** 🟢 None (Previously resolved)
 
@@ -26,6 +26,12 @@
 
 - Mock Authentication Production Guard: Mock auth is now hard-disabled in production. Server startup throws if ALLOW_MOCK_AUTH=true with NODE_ENV=production
 - GraphQL Complexity Enforcement: Server rejects over-complex GraphQL queries with 429 and logs security telemetry
+- GraphQL Depth Limiting (Defense-in-Depth): Requests with depth > GRAPHQL_MAX_DEPTH are rejected with 429 and security logging
+- Admin IP Allowlist Hardening: Deny-by-default in production when ADMIN_IP_WHITELIST is empty/missing; allow when client IP is whitelisted; allow in development for DX
+- Raw SQL Parameterization: Replaced prisma.$queryRawUnsafe with parameterized prisma.$queryRaw tagged templates in discovery resolver
+- Frontend CSP Headers: Next.js sends strict CSP (prod) with optional report-only for dev; backend /csp-report endpoint receives violation reports
+- CI Guard for Env Files: Workflow fails on committed .env\* (except .env.example)
+- Sanitized .env.example: Safe dev-only placeholders and documented security configuration
 - Environment Files: .env.docker removed from tracking; added .env.example; ensure .gitignore prevents env files in git; rotate any previously exposed secrets
 
 ---
@@ -68,6 +74,35 @@ config.local.*, settings.local.*, local.config.*
 ```
 
 ### **3. Development Credentials Policy**
+
+## ⚙️ Configuration: Security Controls
+
+### Environment Variables
+
+- GRAPHQL_MAX_COMPLEXITY: number (default 300) — Maximum allowed complexity; requests exceeding are rejected with 429
+- GRAPHQL_MAX_DEPTH: number (default 10) — Maximum allowed query depth; requests exceeding are rejected with 429
+- ADMIN_IP_WHITELIST: comma-separated list of IPs (e.g., 127.0.0.1,10.0.0.5) — Admin endpoints allow only these IPs in production; deny-by-default when empty
+- CSP_REPORT_ONLY: boolean (default false) — When true, frontend serves Content-Security-Policy-Report-Only for development
+- CSP_REPORT_URI: URL (optional) — Where the browser sends CSP violation reports; defaults to backend /csp-report if unset
+
+### Content Security Policy (CSP)
+
+- Production (strict):
+  - default-src 'self'
+  - script-src 'self' (add nonces/hashes if inline is needed)
+  - style-src 'self'
+  - img-src 'self' data:
+  - connect-src 'self' wss://your-realtime-host
+  - frame-ancestors 'none'
+  - report-uri /csp-report (or value of CSP_REPORT_URI)
+- Development (report-only recommended):
+  - Allows 'unsafe-inline' and 'unsafe-eval' with CSP_REPORT_ONLY=true for DX while still collecting reports
+
+### Raw SQL Policy
+
+- Use prisma.$queryRaw tagged templates with bound variables
+- Do not use prisma.$queryRawUnsafe
+- Add tests or static checks to prevent regressions (see **tests**/no-unsafe-rawsql.test.ts)
 
 - **Development:** Weak default credentials acceptable (app/app, minio123)
 - **Staging:** Strong credentials required, injected via CI/CD
